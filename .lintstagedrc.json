@@ -1,0 +1,5 @@
+{
+  "app/**/*.{ts,tsx}": "cd app && npx eslint --fix",
+  "server/**/*.{ts,tsx}": "cd server && npx eslint --fix",
+  "**/*.{ts,tsx,js,jsx,json,css,md}": "npx prettier --write"
+}

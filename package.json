@@ -1,0 +1,29 @@
+{
+  "name": "uni-chat",
+  "version": "1.0.0",
+  "description": "Full-stack TypeScript starter kit",
+  "private": true,
+  "workspaces": [
+    "app",
+    "server"
+  ],
+  "scripts": {
+    "prepare": "husky",
+    "dev": "concurrently \"npm run dev:app\" \"npm run dev:server\"",
+    "dev:app": "npm run dev --workspace=app",
+    "dev:server": "npm run dev --workspace=server",
+    "build": "npm run build --workspaces",
+    "build:app": "npm run build --workspace=app",
+    "build:server": "npm run build --workspace=server",
+    "lint": "npm run lint --workspaces",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
+    "concurrently": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2"
+  }
+}
