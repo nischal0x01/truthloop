@@ -3,14 +3,73 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* =================================================================
+ * GUMROAD DESIGN SYSTEM — Raw color, spacing, radius, font tokens
+ * Source: app/Design.md
+ * Use these directly (e.g. `bg-pink-accent`, `text-muted-text`,
+ * `p-space-5`, `rounded-radius-lg`) when you don't need a
+ * shadcn semantic alias.
+ * ================================================================= */
+@theme {
+  /* Colors */
+  --color-black: #000000;
+  --color-off-white-surface: #f4f4f0;
+  --color-dark-panel: #242423;
+  --color-white: #ffffff;
+  --color-true-black: #000000;
+  --color-muted-text: #dddddd;
+  --color-pink-accent: #ff90e8;
+  --color-yellow: #f1f333;
+  --color-red: #dc341e;
+  --color-orange: #ffc900;
+
+  /* Spacing */
+  --spacing-space-1: 4px;
+  --spacing-space-2: 8px;
+  --spacing-space-3: 12px;
+  --spacing-space-4: 16px;
+  --spacing-space-5: 24px;
+  --spacing-space-6: 32px;
+  --spacing-space-7: 40px;
+  --spacing-space-8: 48px;
+  --spacing-space-9: 56px;
+  --spacing-space-10: 64px;
+  --spacing-space-11: 80px;
+  --spacing-space-12: 96px;
+  --spacing-space-13: 128px;
+  --spacing-space-14: 160px;
+  --spacing-space-15: 224px;
+
+  /* Border Radius */
+  --radius-radius-sm: 4px;
+  --radius-radius-md: 6px;
+  --radius-radius-lg: 16px;
+  --radius-radius-xl: 24px;
+  --radius-radius-pill: 10rem;
+
+  /* Fonts — ABC Favorit is the primary face (Gumroad signature, paid).
+     Free fallbacks stacked behind it so the page is never a system default:
+       - sans:        ABC Favorit → Poppins → Inter → system-ui
+       - display:     Raleway → ABC Favorit → Poppins → Inter
+         (Raleway reads beautifully at hero sizes; ABC Favorit carries
+          the body tone of Gumroad; Poppins is the workhorse fallback)
+     When ABC Favorit is licensed, drop the .woff2 files in
+     app/public/fonts/ and add a @font-face rule above the @import in
+     main.tsx so the rest act as fallbacks. */
+  --font-abc-favorit: 'ABC Favorit', 'Poppins', 'Inter', system-ui, sans-serif;
+  --font-poppins: 'Poppins', 'Inter', system-ui, sans-serif;
+  --font-raleway: 'Raleway', 'Poppins', 'Inter', system-ui, sans-serif;
+  --font-display: 'Raleway', 'ABC Favorit', 'Poppins', 'Inter', system-ui, sans-serif;
+  --font-sans: 'ABC Favorit', 'Poppins', 'Inter', system-ui, sans-serif;
+}
+
+/* =================================================================
+ * SHADCN SEMANTIC MAPPING (computed) — wires the shadcn token
+ * names (--color-border, --color-ring, --color-primary, etc.)
+ * to the CSS vars defined in :root, so utilities like
+ * `border-border`, `bg-primary`, `text-foreground` resolve.
+ * ================================================================= */
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -26,6 +85,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -42,82 +102,184 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* =================================================================
+ * SHADCN SEMANTIC VALUES — the actual color values, remapped to
+ * the Gumroad palette. Every shadcn/ui component auto-picks up
+ * the Gumroad look (off-white surface, black text, hot-pink
+ * primary CTA, dark-panel secondary, red destructive, yellow
+ * highlight, etc.).
+ * ================================================================= */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 1rem; /* base radius used by shadcn's calc() fallbacks */
+
+  /* Surfaces */
+  --background: var(--color-off-white-surface);
+  --foreground: var(--color-black);
+  --card: var(--color-white);
+  --card-foreground: var(--color-black);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-black);
+
+  /* Brand (Gumroad pink = primary CTA) */
+  --primary: var(--color-pink-accent);
+  --primary-foreground: var(--color-black);
+
+  /* Secondary (dark panel — used for nav active, dark buttons) */
+  --secondary: var(--color-dark-panel);
+  --secondary-foreground: var(--color-white);
+
+  /* Muted */
+  --muted: var(--color-muted-text);
+  --muted-foreground: var(--color-dark-panel);
+
+  /* Accent (yellow — used for highlights, badges) */
+  --accent: var(--color-yellow);
+  --accent-foreground: var(--color-black);
+
+  /* Destructive / danger */
+  --destructive: var(--color-red);
+  --destructive-foreground: var(--color-white);
+
+  /* Borders & inputs */
+  --border: var(--color-black);
+  --input: var(--color-white);
+  --ring: var(--color-black);
+
+  /* Chart palette (Gumroad semantic colors) */
+  --chart-1: var(--color-pink-accent);
+  --chart-2: var(--color-yellow);
+  --chart-3: var(--color-orange);
+  --chart-4: var(--color-red);
+  --chart-5: var(--color-dark-panel);
+
+  /* Sidebar (kept for shadcn completeness) */
+  --sidebar: var(--color-off-white-surface);
+  --sidebar-foreground: var(--color-black);
+  --sidebar-primary: var(--color-pink-accent);
+  --sidebar-primary-foreground: var(--color-black);
+  --sidebar-accent: var(--color-yellow);
+  --sidebar-accent-foreground: var(--color-black);
+  --sidebar-border: var(--color-black);
+  --sidebar-ring: var(--color-black);
 }
 
+/* Dark theme — true-black background, off-white text, brand pink stays.
+   Uncomment `.dark` on <html> to switch. Default app is light. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: var(--color-true-black);
+  --foreground: var(--color-white);
+  --card: var(--color-dark-panel);
+  --card-foreground: var(--color-white);
+  --popover: var(--color-dark-panel);
+  --popover-foreground: var(--color-white);
+
+  --primary: var(--color-pink-accent);
+  --primary-foreground: var(--color-black);
+
+  --secondary: var(--color-muted-text);
+  --secondary-foreground: var(--color-black);
+
+  --muted: var(--color-dark-panel);
+  --muted-foreground: var(--color-muted-text);
+
+  --accent: var(--color-yellow);
+  --accent-foreground: var(--color-black);
+
+  --destructive: var(--color-red);
+  --destructive-foreground: var(--color-white);
+
+  --border: var(--color-white);
+  --input: var(--color-dark-panel);
+  --ring: var(--color-white);
 }
 
+/* =================================================================
+ * SIGNATURE GUMROAD UTILITIES
+ * The design system forbids box-shadows. Depth is conveyed with
+ * solid 1px borders + the CSS offset-shadow utility below.
+ * ================================================================= */
+@layer utilities {
+  /* Offset-shadow (the Gumroad "hard" elevation) */
+  .shadow-hard-sm {
+    box-shadow: 4px 4px 0 0 var(--color-black);
+  }
+  .shadow-hard {
+    box-shadow: 6px 6px 0 0 var(--color-black);
+  }
+  .shadow-hard-lg {
+    box-shadow: 8px 8px 0 0 var(--color-black);
+  }
+
+  /* Focus ring (3px outline, signature Gumroad focus state) */
+  .focus-hard {
+    outline: 3px solid var(--color-black);
+    outline-offset: 0;
+  }
+
+  /* Hover-lift: bumps the offset shadow on hover (signature Gumroad interaction) */
+  .hover-lift {
+    transition:
+      transform 120ms ease-out,
+      box-shadow 120ms ease-out;
+  }
+  .hover-lift:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0 0 var(--color-black);
+  }
+  .hover-lift:active {
+    transform: translate(0, 0);
+    box-shadow: 4px 4px 0 0 var(--color-black);
+  }
+
+  /* Direct access to raw Gumroad palette */
+  .bg-off-white-surface {
+    background-color: var(--color-off-white-surface);
+  }
+  .bg-dark-panel {
+    background-color: var(--color-dark-panel);
+  }
+  .bg-pink-accent {
+    background-color: var(--color-pink-accent);
+  }
+  .bg-yellow {
+    background-color: var(--color-yellow);
+  }
+  .bg-red {
+    background-color: var(--color-red);
+  }
+  .bg-orange {
+    background-color: var(--color-orange);
+  }
+
+  .text-muted-text {
+    color: var(--color-muted-text);
+  }
+  .text-pink-accent {
+    color: var(--color-pink-accent);
+  }
+
+  .border-black {
+    border-color: var(--color-black);
+  }
+}
+
+/* =================================================================
+ * GLOBAL RESETS
+ * ================================================================= */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-feature-settings: 'ss04', 'ss11';
   }
 }
