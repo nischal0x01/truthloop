@@ -47,6 +47,37 @@
   --radius-radius-xl: 24px;
   --radius-radius-pill: 10rem;
 
+  /* === Type scale (Gumroad display system) ===
+     Each role maps to a Tailwind utility: text-display-hero, text-heading-2, etc.
+     Hero sizes scale fluidly via clamp() so mobile (320 px) doesn't break
+     the layout. Headings stay roman; emphasis carries via weight + accent. */
+  --text-display-hero: clamp(48px, 8vw, 96px);
+  --text-display-xl: clamp(40px, 6vw, 72px);
+  --text-display-large: clamp(36px, 5vw, 48px);
+  --text-heading-1: clamp(28px, 4vw, 36px);
+  --text-heading-2: 24px;
+  --text-heading-3: 20px;
+  --text-body-large: 20px;
+  --text-body-medium: 18px;
+  --text-body: 16px;
+  --text-label: 16px;
+  --text-label-small: 14px;
+
+  --leading-display-hero: 1;
+  --leading-display-xl: 1;
+  --leading-display-large: 1.05;
+  --leading-heading-1: 1.1;
+  --leading-heading-2: 1.25;
+  --leading-heading-3: 1.3;
+  --leading-body-large: 1.4;
+  --leading-body-medium: 1.55;
+  --leading-body: 1.625;
+  --leading-label: 1.4;
+  --leading-label-small: 1.4;
+
+  --tracking-display: -0.02em;
+  --tracking-body: -0.01em;
+
   /* Fonts — ABC Favorit is the primary face (Gumroad signature, paid).
      Free fallbacks stacked behind it so the page is never a system default:
        - sans:        ABC Favorit → Poppins → Inter → system-ui
