@@ -1,5 +1,7 @@
 import 'express-async-errors';
 import express from 'express';
+import session from 'express-session';
+import passport from 'passport';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -14,6 +16,25 @@ dotenv.config();
 
 const app = express();
 const PORT = config.port;
+
+// ── Session (required before passport) ──
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET ?? 'dev-secret-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: config.nodeEnv === 'production',
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    },
+  })
+);
+
+// ── Passport ──
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Security middleware
 app.use(helmet());

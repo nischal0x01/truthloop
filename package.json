@@ -1,5 +1,5 @@
 {
-  "name": "uni-chat",
+  "name": "unesco-hackathon",
   "version": "1.0.0",
   "description": "Full-stack TypeScript starter kit",
   "private": true,
@@ -8,7 +8,6 @@
     "server"
   ],
   "scripts": {
-    "prepare": "husky",
     "dev": "concurrently \"npm run dev:app\" \"npm run dev:server\"",
     "dev:app": "npm run dev --workspace=app",
     "dev:server": "npm run dev --workspace=server",
@@ -22,12 +21,11 @@
     "@commitlint/cli": "^19.5.0",
     "@commitlint/config-conventional": "^19.5.0",
     "concurrently": "^9.1.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.2.11",
     "prettier": "^3.4.2"
   },
   "dependencies": {
     "@fontsource/poppins": "^5.3.0",
-    "@fontsource/raleway": "^5.3.0"
+    "@fontsource/raleway": "^5.3.0",
+    "react-router-dom": "^7.18.2"
   }
 }
