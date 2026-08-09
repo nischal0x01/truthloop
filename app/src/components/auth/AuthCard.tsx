@@ -9,7 +9,7 @@
 
 import { useState, useId } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Lock, User, Eye, EyeOff, Loader } from 'lucide-react';
+import { Eye, EyeOff, Loader } from 'lucide-react';
 
 /* ── Google SVG ── */
 const GoogleIcon = () => (
