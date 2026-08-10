@@ -33,7 +33,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
 import { SignIn } from '@/pages/SignIn';
 import { SignUp } from '@/pages/SignUp';
-import { Dashboard } from '@/pages/Dashboard';
+import { Profile } from '@/pages/Profile';
 import { Feed } from '@/pages/Feed';
 
 /* ── Landing (marketing) ── */
@@ -120,10 +120,11 @@ const App = () => {
 
           {/* Protected */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
 
-          {/* Legacy /feed alias → / (keeps old bookmarks + nav links alive) */}
+          {/* Legacy aliases — keep old bookmarks alive */}
+          <Route path="/dashboard" element={<Navigate to="/profile" replace />} />
           <Route path="/feed/*" element={<Navigate to="/" replace />} />
 
           {/* Catch-all */}

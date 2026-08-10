@@ -59,10 +59,10 @@ export function Nav() {
           {isAuthenticated && user ? (
             <>
               <Link
-                to="/dashboard"
+                to="/profile"
                 className="hidden text-label text-foreground hover:underline underline-offset-4 sm:inline"
               >
-                Dashboard
+                Profile
               </Link>
 
               <div className="relative">
