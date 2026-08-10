@@ -12,7 +12,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx src/db/reset.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "db:seed:comments": "tsx src/db/seed-comments.ts"
   },
   "dependencies": {
     "compression": "^1.8.1",

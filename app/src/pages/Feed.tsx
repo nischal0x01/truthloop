@@ -13,10 +13,16 @@
 import { useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, motion } from 'motion/react';
 import { LogOut, Sparkles, TrendingUp } from 'lucide-react';
 import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
+import {
+  ClaimDetailPanel,
+  ClaimDetailEmpty,
+  ClaimDetailDrawer,
+} from '@/components/feed/ClaimDetailPanel';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/auth/UserAvatar';
 import {
@@ -33,9 +39,15 @@ interface FeedProps {
    * the mount boundary.
    */
   initialSearch?: string;
+  /**
+   * Claim to open in the detail panel on mount — set by the /claim/:id route.
+   * Selection lives in the URL so the panel is deep-linkable and the browser
+   * back button closes it.
+   */
+  selectedClaimId?: string;
 }
 
-export function Feed({ initialSearch = '' }: FeedProps) {
+export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -123,20 +135,60 @@ export function Feed({ initialSearch = '' }: FeedProps) {
   const isInitialLoading = claimsQuery.isLoading && !claimsQuery.data;
   const error = (claimsQuery.error || guessesQuery.error) as Error | null;
 
+  /* ── Panel selection (URL-driven) ── */
+  const selected = claims.find((c) => c.id === selectedClaimId) ?? null;
+  const isPanelOpen = !!selected;
+
+  const openClaim = (id: string) => navigate(`/claim/${id}`);
+  // Close returns to the feed root. `replace` keeps the history stack from
+  // filling up with open/close pairs as the user clicks through claims.
+  const closePanel = () => navigate('/', { replace: true });
+
+  // A deep link to a claim that isn't in the list (unpublished, bad id) would
+  // otherwise leave the panel permanently empty — bounce to the feed instead.
+  useEffect(() => {
+    if (selectedClaimId && claimsQuery.isSuccess && !selected) {
+      navigate('/', { replace: true });
+    }
+  }, [selectedClaimId, claimsQuery.isSuccess, selected, navigate]);
+
+  // Escape closes the panel.
+  useEffect(() => {
+    if (!isPanelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closePanel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPanelOpen]);
+
   /* ── Vote handler ── */
   const handleVote = (claimId: string, answer: ClaimVerdict) => {
     voteMutation.mutate({ claimId, answer });
   };
 
+  /* ── Panel content (shared by the docked pane and the mobile drawer) ── */
+  const panelContent = selected ? (
+    <ClaimDetailPanel
+      claim={selected}
+      userGuess={guesses[selected.id]}
+      isVoting={voteMutation.isPending && voteMutation.variables?.claimId === selected.id}
+      onVote={(answer) => handleVote(selected.id, answer)}
+      onClose={closePanel}
+      canInteract={!!user}
+    />
+  ) : null;
+
   /* ── Renders ── */
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       {/* ── Top bar ── */}
-      <header className="sticky top-0 z-30 bg-background border-b-2 border-black">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-4">
+      <header className="z-30 shrink-0 border-b-2 border-black bg-background">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-6 py-4">
           <Link
             to="/"
-            className="flex items-center gap-2 text-label font-semibold tracking-[-0.02em]"
+            className="flex items-center gap-2 text-label font-semibold tracking-display"
           >
             <ShieldCheck size={20} strokeWidth={2.2} aria-hidden="true" />
             <span>TruthLoop</span>
@@ -144,13 +196,16 @@ export function Feed({ initialSearch = '' }: FeedProps) {
 
           <div className="flex items-center gap-3">
             <Link
-              to="/dashboard"
+              to="/profile"
               className="hidden text-label text-foreground hover:underline underline-offset-4 sm:inline"
             >
-              Dashboard
+              Profile
             </Link>
             {user && (
               <>
+                <span className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-highlight px-2.5 py-1 text-label-small font-semibold sm:inline-flex">
+                  {user.points ?? 0} pts
+                </span>
                 <UserAvatar
                   src={user.avatarUrl}
                   name={user.displayName}
@@ -175,105 +230,149 @@ export function Feed({ initialSearch = '' }: FeedProps) {
         </div>
       </header>
 
-      {/* ── Body ── */}
-      <main className="mx-auto max-w-3xl px-6 py-8">
-        {/* Welcome banner (post-OAuth) */}
-        {isWelcome && user && (
-          <div className="mb-6 flex items-start gap-3 rounded-lg border-2 border-black bg-highlight p-4 shadow-hard-sm">
-            <Sparkles size={20} aria-hidden="true" />
+      {/* ── Split pane ──
+          Desktop: feed column scrolls independently, panel docked right.
+          Mobile: single column; the panel becomes a bottom-sheet drawer. */}
+      <div className="mx-auto flex w-full max-w-[1600px] min-h-0 flex-1">
+        {/* Feed column */}
+        <div
+          className={[
+            'min-h-0 flex-1 overflow-y-auto px-6 py-8',
+            // Once the panel is docked the column is narrower; cap it so the
+            // cards don't stretch awkwardly wide when the panel is closed.
+            isPanelOpen ? 'lg:max-w-2xl' : 'mx-auto max-w-3xl',
+          ].join(' ')}
+        >
+          {/* Welcome banner (post-OAuth) */}
+          {isWelcome && user && (
+            <div className="mb-6 flex items-start gap-3 rounded-lg border-2 border-black bg-highlight p-4 shadow-hard-sm">
+              <Sparkles size={20} aria-hidden="true" />
+              <div>
+                <p className="font-medium">Welcome, {user.displayName.split(' ')[0]}!</p>
+                <p className="text-label-small text-foreground/80">
+                  Vote on a claim to earn your first 10 points.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Page header */}
+          <div className="mb-6 flex items-end justify-between gap-4">
             <div>
-              <p className="font-medium">Welcome, {user.displayName.split(' ')[0]}!</p>
-              <p className="text-label-small text-foreground/80">
-                Vote on a claim to earn your first 10 points.
+              <p className="flex items-center gap-1.5 text-label-small uppercase tracking-wider text-muted-foreground">
+                <TrendingUp size={14} aria-hidden="true" />
+                Today's claims
               </p>
+              <h1 className="mt-1 text-display-medium font-medium tracking-display">
+                Real or fake?
+              </h1>
+              {claims.length > 0 && (
+                <p className="mt-2 text-label-small text-muted-foreground">
+                  {Object.keys(guesses).length} of {claims.length} voted · tap a card to open the
+                  discussion
+                </p>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Page header */}
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-label-small uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <TrendingUp size={14} aria-hidden="true" />
-              Today's claims
-            </p>
-            <h1 className="mt-1 text-display-medium font-medium tracking-[-0.02em]">
-              Real or fake?
-            </h1>
-          </div>
-        </div>
+          {/* Error state */}
+          {error && (
+            <div className="mb-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground">
+              <p className="font-medium">Couldn't load claims.</p>
+              <p className="mt-1 text-label-small">{error.message}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  claimsQuery.refetch();
+                  guessesQuery.refetch();
+                }}
+                className="mt-3 border-2 border-black rounded-lg"
+              >
+                Try again
+              </Button>
+            </div>
+          )}
 
-        {/* Error state */}
-        {error && (
-          <div className="mb-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground">
-            <p className="font-medium">Couldn't load claims.</p>
-            <p className="mt-1 text-label-small">{error.message}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                claimsQuery.refetch();
-                guessesQuery.refetch();
-              }}
-              className="mt-3 border-2 border-black rounded-lg"
-            >
-              Try again
-            </Button>
-          </div>
-        )}
+          {/* Loading state */}
+          {isInitialLoading && (
+            <div className="space-y-5">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <ClaimCardSkeleton key={i} />
+              ))}
+            </div>
+          )}
 
-        {/* Loading state */}
-        {isInitialLoading && (
-          <div className="space-y-5">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <ClaimCardSkeleton key={i} />
-            ))}
-          </div>
-        )}
+          {/* Empty state */}
+          {!isInitialLoading && !error && claims.length === 0 && (
+            <div className="rounded-lg border-2 border-black bg-card p-10 text-center shadow-hard">
+              <p className="text-heading-2 font-medium">No claims yet</p>
+              <p className="mt-2 text-body text-muted-foreground">
+                The team is curating today's batch. Check back in a few minutes.
+              </p>
+            </div>
+          )}
 
-        {/* Empty state */}
-        {!isInitialLoading && !error && claims.length === 0 && (
-          <div className="rounded-lg border-2 border-black bg-card p-10 text-center shadow-hard">
-            <p className="text-heading-2 font-medium">No claims yet</p>
-            <p className="mt-2 text-body text-muted-foreground">
-              The team is curating today's batch. Check back in a few minutes.
-            </p>
-          </div>
-        )}
-
-        {/* Feed */}
-        {!isInitialLoading && claims.length > 0 && (
-          <div className="space-y-5">
-            {claims.map((claim) => {
-              const userGuess = guesses[claim.id];
-              const isVotingThis =
-                voteMutation.isPending && voteMutation.variables?.claimId === claim.id;
-              return (
+          {/* Feed */}
+          {!isInitialLoading && claims.length > 0 && (
+            <div className="space-y-5">
+              {claims.map((claim) => (
                 <ClaimCard
                   key={claim.id}
                   claim={claim}
-                  userGuess={userGuess}
-                  isVoting={isVotingThis}
+                  userGuess={guesses[claim.id]}
+                  isVoting={
+                    voteMutation.isPending && voteMutation.variables?.claimId === claim.id
+                  }
                   onVote={(answer) => handleVote(claim.id, answer)}
+                  onOpen={() => openClaim(claim.id)}
+                  isActive={selectedClaimId === claim.id}
+                  compact={isPanelOpen}
                 />
-              );
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
 
-        {/* Vote-error toast-style banner */}
-        {voteMutation.isError && (
-          <div
-            className="mt-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground"
-            role="alert"
-          >
-            <p className="font-medium">Vote failed</p>
-            <p className="mt-1 text-label-small">
-              {(voteMutation.error as Error).message}
-            </p>
-          </div>
+          {/* Vote-error banner */}
+          {voteMutation.isError && (
+            <div
+              className="mt-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground"
+              role="alert"
+            >
+              <p className="font-medium">Vote failed</p>
+              <p className="mt-1 text-label-small">{(voteMutation.error as Error).message}</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Docked panel (desktop only) ── */}
+        <AnimatePresence initial={false}>
+          {isPanelOpen && (
+            <motion.aside
+              key="docked-panel"
+              className="hidden min-h-0 shrink-0 border-l-2 border-black lg:block lg:w-[clamp(400px,38vw,620px)]"
+              initial={{ x: 40, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 40, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {panelContent}
+            </motion.aside>
+          )}
+        </AnimatePresence>
+
+        {/* Idle hint in the dock area when nothing is selected (desktop, wide) */}
+        {!isPanelOpen && claims.length > 0 && (
+          <aside className="hidden min-h-0 w-[clamp(400px,32vw,520px)] shrink-0 border-l-2 border-black xl:block">
+            <ClaimDetailEmpty />
+          </aside>
         )}
-      </main>
+      </div>
+
+      {/* ── Mobile drawer ── */}
+      <ClaimDetailDrawer open={isPanelOpen} onClose={closePanel}>
+        {panelContent}
+      </ClaimDetailDrawer>
     </div>
   );
 }

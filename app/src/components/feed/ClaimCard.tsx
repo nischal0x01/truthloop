@@ -26,16 +26,57 @@ interface ClaimCardProps {
   userGuess?: UserGuessMap[string];
   isVoting?: boolean;
   onVote: (answer: ClaimVerdict) => void;
+  /** Open this claim in the detail panel. When set, the card becomes clickable. */
+  onOpen?: () => void;
+  /** Highlights the card as the one currently shown in the panel. */
+  isActive?: boolean;
+  /**
+   * Compact mode: used when the feed is a narrow column beside the docked
+   * panel. Hides the inline verdict reveal (the panel shows it in full) so the
+   * list stays scannable.
+   */
+  compact?: boolean;
 }
 
-export function ClaimCard({ claim, userGuess, isVoting, onVote }: ClaimCardProps) {
+export function ClaimCard({
+  claim,
+  userGuess,
+  isVoting,
+  onVote,
+  onOpen,
+  isActive = false,
+  compact = false,
+}: ClaimCardProps) {
   const navigate = useNavigate();
   const locked = !!userGuess;
 
   return (
     <article
-      className="border-2 border-black rounded-lg bg-card shadow-hard overflow-hidden"
+      className={[
+        'rounded-lg border-2 border-black bg-card overflow-hidden transition-all',
+        isActive ? 'shadow-hard-lg -translate-y-0.5 ring-2 ring-accent' : 'shadow-hard',
+        onOpen ? 'cursor-pointer hover:-translate-y-0.5' : '',
+      ].join(' ')}
       aria-labelledby={`claim-${claim.id}-text`}
+      aria-current={isActive ? 'true' : undefined}
+      // Clicking anywhere opens the panel. Interactive children (vote buttons,
+      // links) call stopPropagation so they don't also trigger this.
+      onClick={onOpen}
+      // Keyboard parity for the whole-card click target. The footer "Discuss"
+      // button remains the primary tab stop; this adds Enter/Space on the card.
+      tabIndex={onOpen ? 0 : undefined}
+      role={onOpen ? 'button' : undefined}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.target !== e.currentTarget) return; // let children own their keys
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onOpen();
+              }
+            }
+          : undefined
+      }
     >
       {/* ── Header: category + time ── */}
       <header className="flex items-center justify-between gap-3 border-b-2 border-black px-5 py-3">
@@ -56,7 +97,7 @@ export function ClaimCard({ claim, userGuess, isVoting, onVote }: ClaimCardProps
         </p>
 
         {/* ── Vote UI (or verdict reveal) ── */}
-        <div className="mt-5">
+        <div className="mt-5" onClick={(e) => e.stopPropagation()}>
           {!locked ? (
             <>
               <p className="mb-3 text-label-small uppercase tracking-wider text-muted-foreground">
@@ -64,6 +105,8 @@ export function ClaimCard({ claim, userGuess, isVoting, onVote }: ClaimCardProps
               </p>
               <VoteButtons isVoting={isVoting} onVote={onVote} />
             </>
+          ) : compact ? (
+            <CompactVerdict claim={claim} userGuess={userGuess!} />
           ) : (
             <VerdictReveal claim={claim} userGuess={userGuess!} />
           )}
@@ -74,10 +117,13 @@ export function ClaimCard({ claim, userGuess, isVoting, onVote }: ClaimCardProps
       <footer className="flex items-center justify-between gap-3 border-t-2 border-black bg-muted/40 px-5 py-2.5 text-label-small text-muted-foreground">
         <span>{claim.voteCount} {claim.voteCount === 1 ? 'vote' : 'votes'}</span>
         <div className="flex items-center gap-3">
-          {/* Placeholder — comments land in a later phase */}
           <button
             type="button"
-            onClick={() => navigate(`/feed/${claim.id}`)}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onOpen) onOpen();
+              else navigate(`/claim/${claim.id}`);
+            }}
             className="flex items-center gap-1 hover:text-foreground"
             aria-label="Discuss this claim"
           >
@@ -87,6 +133,38 @@ export function ClaimCard({ claim, userGuess, isVoting, onVote }: ClaimCardProps
         </div>
       </footer>
     </article>
+  );
+}
+
+/* ── Compact verdict badge (split-view feed column) ── */
+
+function CompactVerdict({
+  claim,
+  userGuess,
+}: {
+  claim: Claim;
+  userGuess: NonNullable<ClaimCardProps['userGuess']>;
+}) {
+  const isCorrect = userGuess.correct;
+  return (
+    <div
+      className={[
+        'flex items-center gap-2 rounded-md border-2 border-black px-3 py-2 text-label-small font-medium',
+        isCorrect ? 'bg-highlight text-highlight-foreground' : 'bg-danger text-danger-foreground',
+      ].join(' ')}
+      role="status"
+    >
+      {isCorrect ? (
+        <Trophy size={14} aria-hidden="true" />
+      ) : (
+        <AlertTriangle size={14} aria-hidden="true" />
+      )}
+      <span>
+        You said <strong className="uppercase">{userGuess.answer}</strong> —{' '}
+        {isCorrect ? 'correct' : `it was ${claim.verdict}`}
+      </span>
+      <span className="ml-auto whitespace-nowrap underline underline-offset-2">Details →</span>
+    </div>
   );
 }
 
