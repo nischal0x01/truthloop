@@ -418,7 +418,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         .auth-root {
           display: flex;
           flex: 1;
-          background: #f4f4f0;
+          background: #ffffff;
           color: #000000;
           font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
           overflow-x: clip;

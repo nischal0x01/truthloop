@@ -13,7 +13,10 @@
 @theme {
   /* Colors */
   --color-black: #000000;
-  --color-off-white-surface: #f4f4f0;
+  /* Surface was off-white (#f4f4f0); changed to white per product feedback
+     so the body matches card surfaces and depth comes purely from the
+     signature 2px black border + offset-shadow language. */
+  --color-off-white-surface: #ffffff;
   --color-dark-panel: #242423;
   --color-white: #ffffff;
   --color-true-black: #000000;

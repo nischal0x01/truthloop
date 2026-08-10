@@ -169,7 +169,7 @@ export function AuthCard({ mode }: AuthCardProps) {
 
         @media (hover: hover) {
           .auth-btn--google:not(:disabled):hover {
-            background: #f4f4f0;
+            background: #ffffff;
             transform: translate(-1px, -1px);
             box-shadow: 4px 4px 0 0 var(--auth-border, #000000);
           }

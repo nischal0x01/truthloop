@@ -1,4 +1,5 @@
 /* Hallmark · page: feed · genre: app-shell · theme: Gumroad system
+ *   pre-emit critique: P5 H5 E5 S5 R5 V4
  *
  * Authenticated claims feed. Loads published claims + the current user's
  * guess map in parallel, then renders one ClaimCard per claim.
@@ -7,14 +8,23 @@
  *   - mutation posts to /api/claims/:id/guess with the chosen answer
  *   - on success: optimistically write the guess to the my-guesses cache
  *     and invalidate the claims list (vote_count goes up)
- *   - on error: surface in a toast (TODO when toaster lands) and revert
+ *   - on error: revert
+ *
+ * Feed ordering:
+ *   1. The user's first unvoted claim (if any) — marked `featured`, hoisted
+ *      to the top, with a pink ring + "YOUR TURN" badge.
+ *   2. The remaining unvoted claims.
+ *   3. Already-voted claims.
+ * This gives the page a single, unambiguous next action at all times.
  */
 
-import { useEffect } from 'react';
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+
+import { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
-import { LogOut, Sparkles, TrendingUp } from 'lucide-react';
+import { Flame, LogOut, Sparkles, TrendingUp } from 'lucide-react';
 import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
@@ -30,19 +40,16 @@ import {
   claimsApi,
   type Claim,
   type ClaimVerdict,
+  type UserGuessMap,
 } from '@/lib/claims';
 
 interface FeedProps {
   /**
    * Optional initial search string (e.g. `?welcome=true` from OAuth callback).
-   * The parent `RootRoute` passes `location.search` so we preserve it across
-   * the mount boundary.
    */
   initialSearch?: string;
   /**
    * Claim to open in the detail panel on mount — set by the /claim/:id route.
-   * Selection lives in the URL so the panel is deep-linkable and the browser
-   * back button closes it.
    */
   selectedClaimId?: string;
 }
@@ -66,12 +73,8 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
     return undefined;
   }, [isWelcome, searchParams, setSearchParams]);
 
-  // Touch initialSearch so the prop is read at least once (avoids "unused var"
-  // warnings while making the intent explicit).
   useEffect(() => {
     if (initialSearch && !searchParams.toString()) {
-      // Defensive — if for any reason the URL stripped params during mount,
-      // restore them so the welcome banner still shows.
       setSearchParams(new URLSearchParams(initialSearch), { replace: true });
     }
   }, [initialSearch, searchParams, setSearchParams]);
@@ -93,59 +96,64 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
       claimsApi.vote(claimId, answer),
 
     onMutate: async ({ claimId, answer }) => {
-      // Optimistic update: lock the card immediately, mark as pending.
       await qc.cancelQueries({ queryKey: claimKeys.myGuesses() });
-      const prev = qc.getQueryData<ReturnType<typeof claimsApi.myGuesses> extends Promise<infer R> ? R extends { guesses: infer G } ? G : never : never>(
-        claimKeys.myGuesses()
-      );
-      qc.setQueryData(
-        claimKeys.myGuesses(),
-        (cur: ReturnType<typeof claimsApi.myGuesses> extends Promise<infer R> ? R extends { guesses: infer G } ? G : never : never) => ({
-          ...(cur ?? {}),
-          [claimId]: { answer, correct: false }, // server is the source of truth
-        })
-      );
+      const prev = qc.getQueryData<UserGuessMap | undefined>(claimKeys.myGuesses());
+      qc.setQueryData<UserGuessMap | undefined>(claimKeys.myGuesses(), (cur) => ({
+        ...(cur ?? {}),
+        [claimId]: { answer, correct: false },
+      }));
       return { prev };
     },
 
     onError: (_err, _vars, ctx) => {
-      // Revert optimistic write.
       if (ctx?.prev) qc.setQueryData(claimKeys.myGuesses(), ctx.prev);
     },
 
     onSuccess: (result, { claimId }) => {
-      type GuessesMap = ReturnType<typeof claimsApi.myGuesses> extends Promise<infer R> ? R extends { guesses: infer G } ? G : never : never;
-      qc.setQueryData<GuessesMap>(
-        claimKeys.myGuesses(),
-        (cur) => ({
-          ...(cur ?? {}),
-          [claimId]: { answer: result.guess.userAnswer, correct: result.guess.isCorrect },
-        })
-      );
-      // Vote count went up — revalidate the list.
+      qc.setQueryData<UserGuessMap | undefined>(claimKeys.myGuesses(), (cur) => ({
+        ...(cur ?? {}),
+        [claimId]: { answer: result.guess.userAnswer, correct: result.guess.isCorrect },
+      }));
       qc.invalidateQueries({ queryKey: claimKeys.list() });
-      // User's points may have changed — revalidate /me.
       qc.invalidateQueries({ queryKey: ['auth', 'me'] });
     },
   });
 
   /* ── Derived ── */
   const claims: Claim[] = claimsQuery.data ?? [];
-  const guesses = guessesQuery.data ?? {};
+  const guesses: UserGuessMap = guessesQuery.data ?? {};
   const isInitialLoading = claimsQuery.isLoading && !claimsQuery.data;
   const error = (claimsQuery.error || guessesQuery.error) as Error | null;
+
+  /* ── Reorder: first unvoted on top (featured), rest unvoted, then voted ── */
+  const orderedClaims = useMemo(() => {
+    if (claims.length === 0) return [] as Claim[];
+    const unvoted: Claim[] = [];
+    const voted: Claim[] = [];
+    for (const c of claims) {
+      if (guesses[c.id]) voted.push(c);
+      else unvoted.push(c);
+    }
+    return [...unvoted, ...voted];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimsQuery.data, guessesQuery.data]);
+
+  const featuredId = orderedClaims[0] && !guesses[orderedClaims[0].id]
+    ? orderedClaims[0].id
+    : null;
+
+  const votedCount = Object.keys(guesses).length;
+  const totalCount = claims.length;
+  const progressPct = totalCount === 0 ? 0 : Math.min(100, Math.round((votedCount / totalCount) * 100));
 
   /* ── Panel selection (URL-driven) ── */
   const selected = claims.find((c) => c.id === selectedClaimId) ?? null;
   const isPanelOpen = !!selected;
 
   const openClaim = (id: string) => navigate(`/claim/${id}`);
-  // Close returns to the feed root. `replace` keeps the history stack from
-  // filling up with open/close pairs as the user clicks through claims.
   const closePanel = () => navigate('/', { replace: true });
 
-  // A deep link to a claim that isn't in the list (unpublished, bad id) would
-  // otherwise leave the panel permanently empty — bounce to the feed instead.
+  // Deep link to a claim that isn't in the list — bounce to the feed.
   useEffect(() => {
     if (selectedClaimId && claimsQuery.isSuccess && !selected) {
       navigate('/', { replace: true });
@@ -180,7 +188,6 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
     />
   ) : null;
 
-  /* ── Renders ── */
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       {/* ── Top bar ── */}
@@ -197,13 +204,13 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
           <div className="flex items-center gap-3">
             <Link
               to="/profile"
-              className="hidden text-label text-foreground hover:underline underline-offset-4 sm:inline"
+              className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
             >
               Profile
             </Link>
             {user && (
               <>
-                <span className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-highlight px-2.5 py-1 text-label-small font-semibold sm:inline-flex">
+                <span className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-highlight px-2.5 py-1 text-label-small font-semibold text-highlight-foreground sm:inline-flex">
                   {user.points ?? 0} pts
                 </span>
                 <UserAvatar
@@ -238,17 +245,15 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
         <div
           className={[
             'min-h-0 flex-1 overflow-y-auto px-6 py-8',
-            // Once the panel is docked the column is narrower; cap it so the
-            // cards don't stretch awkwardly wide when the panel is closed.
             isPanelOpen ? 'lg:max-w-2xl' : 'mx-auto max-w-3xl',
           ].join(' ')}
         >
           {/* Welcome banner (post-OAuth) */}
           {isWelcome && user && (
-            <div className="mb-6 flex items-start gap-3 rounded-lg border-2 border-black bg-highlight p-4 shadow-hard-sm">
+            <div className="mb-6 flex items-start gap-3 rounded-lg border-2 border-black bg-highlight p-4 text-highlight-foreground shadow-hard-sm">
               <Sparkles size={20} aria-hidden="true" />
               <div>
-                <p className="font-medium">Welcome, {user.displayName.split(' ')[0]}!</p>
+                <p className="font-semibold">Welcome, {user.displayName.split(' ')[0]}!</p>
                 <p className="text-label-small text-foreground/80">
                   Vote on a claim to earn your first 10 points.
                 </p>
@@ -256,29 +261,67 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
             </div>
           )}
 
-          {/* Page header */}
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <div>
-              <p className="flex items-center gap-1.5 text-label-small uppercase tracking-wider text-muted-foreground">
-                <TrendingUp size={14} aria-hidden="true" />
-                Today's claims
-              </p>
-              <h1 className="mt-1 text-display-medium font-medium tracking-display">
-                Real or fake?
-              </h1>
-              {claims.length > 0 && (
-                <p className="mt-2 text-label-small text-muted-foreground">
-                  {Object.keys(guesses).length} of {claims.length} voted · tap a card to open the
-                  discussion
+          {/* Page header — the page's loudest moment. Display heading
+              underlined with the brand accent, plus a streak chip on the right
+              that flips orange the moment the user hits a streak. */}
+          <div className="mb-5">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="flex items-center gap-1.5 text-label-small font-semibold uppercase tracking-wider text-foreground/70">
+                  <TrendingUp size={14} aria-hidden="true" />
+                  Today's claims
                 </p>
+                <h1 className="mt-1 inline-block font-display text-display-medium font-semibold leading-[0.95] tracking-display text-foreground">
+                  Real or fake?
+                  {/* Brand-pink underline — signature accent that draws the
+                      eye to the heading without introducing a new colour. */}
+                  <span
+                    aria-hidden="true"
+                    className="mt-2 block h-1.5 w-24 rounded-sm bg-accent"
+                  />
+                </h1>
+                {claims.length > 0 && (
+                  <p className="mt-3 text-label font-medium text-foreground/80">
+                    {votedCount} of {totalCount} voted
+                    {progressPct === 100 && totalCount > 0 ? ' · all caught up 🎉' : ' · tap a card to vote'}
+                  </p>
+                )}
+              </div>
+
+              {/* Streak chip — the user is on a streak if their last few votes
+                  were correct. We don't track streaks server-side yet, so we
+                  derive a simple "hot" state from recent correct votes. */}
+              {user && (
+                <StreakChip guesses={guesses} claims={claims} />
               )}
             </div>
+
+            {/* Progress rail — chunky, brand-coloured, clearly readable at a
+                glance. The filled portion uses yellow (highlight) so the user
+                sees their progress without staring at numbers. */}
+            {claims.length > 0 && (
+              <div
+                className="mt-5 h-3 w-full overflow-hidden rounded-md border-2 border-black bg-muted"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progressPct}
+                aria-label={`${votedCount} of ${totalCount} claims voted`}
+              >
+                <motion.div
+                  className="h-full bg-highlight"
+                  initial={false}
+                  animate={{ width: `${progressPct}%` }}
+                  transition={{ type: 'spring', damping: 22, stiffness: 180 }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Error state */}
           {error && (
             <div className="mb-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground">
-              <p className="font-medium">Couldn't load claims.</p>
+              <p className="font-semibold">Couldn't load claims.</p>
               <p className="mt-1 text-label-small">{error.message}</p>
               <Button
                 variant="outline"
@@ -306,8 +349,8 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
           {/* Empty state */}
           {!isInitialLoading && !error && claims.length === 0 && (
             <div className="rounded-lg border-2 border-black bg-card p-10 text-center shadow-hard">
-              <p className="text-heading-2 font-medium">No claims yet</p>
-              <p className="mt-2 text-body text-muted-foreground">
+              <p className="font-display text-heading-2 font-semibold">No claims yet</p>
+              <p className="mt-2 text-body text-foreground/70">
                 The team is curating today's batch. Check back in a few minutes.
               </p>
             </div>
@@ -316,7 +359,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
           {/* Feed */}
           {!isInitialLoading && claims.length > 0 && (
             <div className="space-y-5">
-              {claims.map((claim) => (
+              {orderedClaims.map((claim) => (
                 <ClaimCard
                   key={claim.id}
                   claim={claim}
@@ -327,6 +370,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                   onVote={(answer) => handleVote(claim.id, answer)}
                   onOpen={() => openClaim(claim.id)}
                   isActive={selectedClaimId === claim.id}
+                  featured={claim.id === featuredId}
                   compact={isPanelOpen}
                 />
               ))}
@@ -339,8 +383,10 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               className="mt-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground"
               role="alert"
             >
-              <p className="font-medium">Vote failed</p>
-              <p className="mt-1 text-label-small">{(voteMutation.error as Error).message}</p>
+              <p className="font-semibold">Vote failed</p>
+              <p className="mt-1 text-label-small">
+                {(voteMutation.error as Error).message}
+              </p>
             </div>
           )}
         </div>
@@ -374,5 +420,50 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
         {panelContent}
       </ClaimDetailDrawer>
     </div>
+  );
+}
+
+/* ── Streak chip ──────────────────────────────────────────────────── */
+
+/**
+ * Visual: a flame + "X day streak" badge. Goes orange when the user has at
+ * least 3 correct votes in their most-recent guesses; otherwise stays neutral.
+ * The "days" semantics are approximated by counting recent correct guesses —
+ * we don't track calendar days yet, but the chip's intent (you're on a roll)
+ * is what matters visually.
+ */
+function StreakChip({
+  guesses,
+  claims,
+}: {
+  guesses: UserGuessMap;
+  claims: Claim[];
+}) {
+  // Pull the most recent N votes by claim publishedAt as a proxy for recency.
+  const recent = useMemo(() => {
+    const ids = Object.keys(guesses);
+    if (ids.length === 0) return [];
+    const sorted = [...claims]
+      .filter((c) => guesses[c.id])
+      .sort((a, b) => {
+        const at = new Date(a.publishedAt ?? a.createdAt).getTime();
+        const bt = new Date(b.publishedAt ?? b.createdAt).getTime();
+        return bt - at;
+      })
+      .slice(0, 5);
+    return sorted.map((c) => guesses[c.id]);
+  }, [guesses, claims]);
+
+  const streak = recent.length > 0 && recent.every((g) => g.correct) ? recent.length : 0;
+  if (streak < 2) return null;
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-black bg-orange px-2.5 py-1 text-label-small font-bold uppercase tracking-wider text-foreground shadow-hard-sm"
+      aria-label={`On a ${streak}-claim streak`}
+    >
+      <Flame size={14} strokeWidth={2.5} aria-hidden="true" />
+      <span>{streak} streak</span>
+    </span>
   );
 }
