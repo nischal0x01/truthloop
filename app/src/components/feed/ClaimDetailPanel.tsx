@@ -194,11 +194,8 @@ export function ClaimDetailPanel({
         {/* Vote / verdict */}
         {!hasVoted ? (
           <div className="rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
-            <p className="mb-3 text-label-small uppercase tracking-wider text-muted-foreground">
-              Your call
-            </p>
             <VoteButtons isVoting={isVoting} onVote={onVote} />
-            <p className="mt-3 flex items-center gap-1.5 text-label-small text-muted-foreground">
+            <p className="mt-4 flex items-center gap-1.5 text-label-small font-medium text-foreground/70">
               <Lock size={12} aria-hidden="true" />
               Vote to reveal the verdict and unlock the discussion.
             </p>
@@ -287,23 +284,33 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
     <div className="space-y-3">
       <div
         className={[
-          'flex items-center gap-2 rounded-lg border-2 border-black px-4 py-2.5 text-label font-medium',
+          'rounded-lg border-2 border-black px-4 py-4 text-center shadow-hard-sm',
           correct ? 'bg-highlight text-highlight-foreground' : 'bg-danger text-danger-foreground',
         ].join(' ')}
         role="status"
+        aria-live="polite"
       >
-        {correct ? (
-          <>
-            <Trophy size={15} aria-hidden="true" />
-            You said <strong className="uppercase">{userGuess?.answer}</strong> — correct! +10 pts
-          </>
-        ) : (
-          <>
-            <AlertTriangle size={15} aria-hidden="true" />
-            You said <strong className="uppercase">{userGuess?.answer}</strong> — it was{' '}
-            <strong className="uppercase">{claim.verdict}</strong>
-          </>
-        )}
+        <div className="flex items-center justify-center gap-2">
+          {correct ? (
+            <Trophy size={18} strokeWidth={2.5} aria-hidden="true" />
+          ) : (
+            <AlertTriangle size={18} strokeWidth={2.5} aria-hidden="true" />
+          )}
+          <p className="text-heading-3 font-semibold tracking-display">
+            {correct ? (
+              <>
+                Correct! <span className="text-label font-semibold">+10 pts</span>
+              </>
+            ) : (
+              <>
+                Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
+              </>
+            )}
+          </p>
+        </div>
+        <p className="mt-1 text-label-small font-semibold uppercase tracking-wider opacity-90">
+          You said <strong className="uppercase">{userGuess?.answer}</strong>
+        </p>
       </div>
 
       <div className="rounded-lg border-2 border-black bg-card p-4">
@@ -326,19 +333,19 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
               </>
             )}
           </span>
-          <span className="text-label-small text-muted-foreground">
+          <span className="text-label-small font-medium text-muted-foreground">
             {CATEGORY_META[claim.category].label}
           </span>
         </div>
 
-        <p className="text-label-small leading-relaxed text-foreground/90">{claim.explanation}</p>
+        <p className="text-label leading-relaxed text-foreground/90">{claim.explanation}</p>
 
         {claim.sourceUrl && (
           <a
             href={claim.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-1 text-label-small underline underline-offset-4 hover:text-accent-foreground"
+            className="mt-3 inline-flex items-center gap-1 text-label-small font-medium underline underline-offset-4 hover:text-accent-foreground"
           >
             <ExternalLink size={12} aria-hidden="true" />
             Source
