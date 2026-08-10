@@ -8,6 +8,7 @@
  *
  * Route map:
  *   /              → RootRoute — renders Feed if signed in, Landing if not
+ *   /claim/:id     → Feed with that claim open in the detail panel
  *   /signin        → public auth form (redirects authenticated users to /)
  *   /signup        → public auth form (redirects authenticated users to /)
  *   /dashboard     → protected, behind <ProtectedRoute />
@@ -19,7 +20,7 @@
  *   - Avoids the redirect chain (auth → /feed → /) that caused the nav flicker.
  */
 
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Nav } from '@/components/landing/nav';
 import { Hero } from '@/components/landing/hero';
@@ -55,7 +56,7 @@ const Landing = () => (
 
 /* ── Root route: Feed if signed-in, Landing otherwise ── */
 
-function RootRoute() {
+function RootRoute({ claimId }: { claimId?: string }) {
   const { status } = useAuth();
   const location = useLocation();
 
@@ -76,10 +77,20 @@ function RootRoute() {
 
   if (status === 'authenticated') {
     // Preserve search params (e.g. ?welcome=true from OAuth callback)
-    return <Feed initialSearch={location.search} />;
+    return <Feed initialSearch={location.search} selectedClaimId={claimId} />;
   }
 
   return <Landing />;
+}
+
+/**
+ * /claim/:id — the feed with one claim opened in the detail panel.
+ * Selection lives in the URL so the panel is shareable and the back button
+ * closes it. Signed-out visitors fall through to the landing page.
+ */
+function ClaimRoute() {
+  const { id } = useParams<{ id: string }>();
+  return <RootRoute claimId={id} />;
 }
 
 /**
@@ -99,6 +110,9 @@ const App = () => {
         <Routes>
           {/* Root — adaptive */}
           <Route path="/" element={<RootRoute />} />
+
+          {/* Feed with a claim open in the detail panel — deep-linkable */}
+          <Route path="/claim/:id" element={<ClaimRoute />} />
 
           {/* Auth — bounce signed-in users to / */}
           <Route
