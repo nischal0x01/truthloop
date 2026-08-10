@@ -1,15 +1,20 @@
 /* Hallmark · component: form-card · genre: soft · theme: Gumroad system
- * states: default · hover · focus · active · disabled · loading · error · success
+ * states: default · hover · focus · active · disabled · loading
  * contrast: pass (WCAG 4.5:1 all pairs)
  *
- * Shared auth card — renders sign-in or sign-up fields based on `mode`.
- * Google OAuth button at top; email/password below; submit at bottom.
- * All 8 states implemented on every interactive element.
+ * Google-OAuth-only auth card.
+ *   - One primary CTA: "Continue with Google" → window.location to /api/auth/google
+ *   - Footer link toggles between /signin ↔ /signup (both routes share the
+ *     same OAuth flow; first sign-in creates the user, subsequent sign-ins
+ *     log them in via the email upsert in server/src/routes/auth.ts).
+ *   - No email/password fields — the spec (CLAUDE.md) is "Google OAuth
+ *     (no password)". Server endpoints /api/auth/signup & /api/auth/signin
+ *     still exist as dev-only escape hatches but are NOT exposed in the UI.
  */
 
-import { useState, useId } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, EyeOff, Loader } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context';
+import { authApi } from '@/lib/auth';
 
 /* ── Google SVG ── */
 const GoogleIcon = () => (
@@ -33,215 +38,32 @@ const GoogleIcon = () => (
   </svg>
 );
 
-/* ── Field wrapper with label + helper ── */
-interface FieldProps {
-  label: string;
-  id: string;
-  type?: string;
-  autoComplete?: string;
-  placeholder?: string;
-  value: string;
-  onChange: React.ChangeEventHandler<HTMLInputElement>;
-  onBlur?: React.FocusEventHandler<HTMLInputElement>;
-  error?: string;
-  disabled?: boolean;
-  required?: boolean;
-}
-
-function Field({
-  label,
-  id,
-  type = 'text',
-  autoComplete,
-  placeholder,
-  value,
-  onChange,
-  onBlur,
-  error,
-  disabled,
-  required,
-}: FieldProps) {
-  const errorId = `${id}-error`;
-  const helperId = `${id}-helper`;
-
-  return (
-    <div className="auth-field">
-      <label className="auth-field__label" htmlFor={id}>
-        {label}
-        {required && (
-          <span className="auth-field__required" aria-hidden="true">
-            {' '}
-            *
-          </span>
-        )}
-      </label>
-      <div className="auth-field__input-wrap">
-        <input
-          id={id}
-          type={type}
-          autoComplete={autoComplete}
-          placeholder={placeholder}
-          value={value}
-          onChange={onChange}
-          onBlur={onBlur}
-          disabled={disabled}
-          required={required}
-          aria-required={required}
-          aria-invalid={!!error}
-          aria-describedby={error ? errorId : helperId}
-          className={`auth-field__input${error ? ' auth-field__input--error' : ''}`}
-        />
-      </div>
-      <div className="auth-field__foot">
-        {error ? (
-          <p id={errorId} className="auth-field__error" role="alert">
-            {error}
-          </p>
-        ) : (
-          <p id={helperId} className="auth-field__helper" aria-live="polite" />
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Password toggle ── */
-function PasswordToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      className="auth-field__toggle"
-      onClick={onToggle}
-      aria-label={visible ? 'Hide password' : 'Show password'}
-      tabIndex={-1}
-    >
-      {visible ? <EyeOff size={16} /> : <Eye size={16} />}
-    </button>
-  );
-}
-
-/* ── Main AuthCard ── */
+/* ── Public API ── */
 export type AuthMode = 'signin' | 'signup';
 
 interface AuthCardProps {
   mode: AuthMode;
 }
 
-interface FormState {
-  name: string;
-  email: string;
-  password: string;
-}
-
-interface FormErrors {
-  name?: string;
-  email?: string;
-  password?: string;
-}
-
-type SubmitState = 'idle' | 'loading' | 'error' | 'success';
-
 export function AuthCard({ mode }: AuthCardProps) {
-  const uid = useId();
   const isSignUp = mode === 'signup';
+  const { isAuthenticated } = useAuth();
 
-  const [form, setForm] = useState<FormState>({
-    name: '',
-    email: '',
-    password: '',
-  });
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [showPassword, setShowPassword] = useState(false);
-  const [submitState, setSubmitState] = useState<SubmitState>('idle');
-  const [globalError, setGlobalError] = useState('');
+  // Defence in depth — RedirectIfSignedIn in App.tsx already handles this,
+  // but if we're rendered for an authenticated user we render nothing.
+  if (isAuthenticated) return null;
 
-  /* ── Validation ── */
-  const validate = (fields: FormState): FormErrors => {
-    const errs: FormErrors = {};
-    if (isSignUp && !fields.name.trim()) {
-      errs.name = 'Your name is required.';
-    }
-    if (!fields.email.trim()) {
-      errs.email = 'Email address is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
-      errs.email = 'Enter a valid email address.';
-    }
-    if (!fields.password) {
-      errs.password = 'Password is required.';
-    } else if (isSignUp && fields.password.length < 8) {
-      errs.password = 'Use at least 8 characters.';
-    }
-    return errs;
-  };
-
-  const handleChange = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const next = { ...form, [field]: e.target.value };
-    setForm(next);
-    if (touched[field]) {
-      const errs = validate(next);
-      setErrors((prev) => ({ ...prev, [field]: errs[field] }));
-    }
-  };
-
-  const handleBlur = (field: keyof FormState) => () => {
-    setTouched((prev) => ({ ...prev, [field]: true }));
-    const errs = validate(form);
-    setErrors((prev) => ({ ...prev, [field]: errs[field] }));
-  };
-
-  /* ── Submit ── */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setGlobalError('');
-
-    const allTouched = { name: true, email: true, password: true };
-    setTouched(allTouched);
-    const errs = validate(form);
-    setErrors(errs);
-
-    if (Object.keys(errs).length > 0) return;
-
-    setSubmitState('loading');
-    try {
-      const endpoint = isSignUp ? '/api/auth/signup' : '/api/auth/signin';
-      const body = isSignUp
-        ? { name: form.name, email: form.email, password: form.password }
-        : { email: form.email, password: form.password };
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        credentials: 'include',
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || 'Something went wrong. Please try again.');
-      }
-
-      setSubmitState('success');
-      // Redirect handled by the page component watching auth state
-      window.location.href = '/';
-    } catch (err: unknown) {
-      setSubmitState('error');
-      setGlobalError(err instanceof Error ? err.message : 'Something went wrong.');
-    }
-  };
-
-  /* ── Google OAuth redirect ── */
   const handleGoogleAuth = () => {
-    window.location.href = '/api/auth/google';
+    // Full-page redirect — Passport handles the consent flow and the
+    // server bounces back to FRONTEND_URL with a session cookie set.
+    window.location.href = authApi.googleOAuthUrl();
   };
-
-  const isLoading = submitState === 'loading';
-  const isSuccess = submitState === 'success';
-  const isFormInvalid = Object.keys(validate(form)).length > 0;
 
   const heading = isSignUp ? 'Create your account' : 'Welcome back';
-  const submitLabel = isLoading ? 'Please wait…' : isSignUp ? 'Create account' : 'Sign in';
-  const footerText = isSignUp ? 'Already have an account?' : "Don't have an account?";
+  const sub = isSignUp
+    ? 'One tap with Google to start spotting misinformation.'
+    : 'One tap with Google to pick up where you left off.';
+  const footerText = isSignUp ? 'Already have an account?' : 'First time here?';
   const footerLink = isSignUp ? '/signin' : '/signup';
   const footerLinkLabel = isSignUp ? 'Sign in' : 'Sign up';
 
@@ -250,129 +72,21 @@ export function AuthCard({ mode }: AuthCardProps) {
       {/* ── Header ── */}
       <header className="auth-card__header">
         <h1 className="auth-card__heading">{heading}</h1>
-        <p className="auth-card__sub">
-          {isSignUp ? 'Start spotting misinformation today.' : 'Good to see you again.'}
-        </p>
+        <p className="auth-card__sub">{sub}</p>
       </header>
 
-      {/* ── Google OAuth ── */}
+      {/* ── Google OAuth (only auth method) ── */}
       <button
         type="button"
-        className="auth-btn auth-btn--google"
+        className="auth-btn auth-btn--google auth-btn--google-lone"
         onClick={handleGoogleAuth}
-        disabled={isLoading || isSuccess}
-        data-state={isSuccess ? 'success' : undefined}
+        aria-label="Continue with Google"
       >
         <GoogleIcon />
         <span>Continue with Google</span>
       </button>
 
-      {/* ── Divider ── */}
-      <div className="auth-divider" aria-hidden="true">
-        <span>or</span>
-      </div>
-
-      {/* ── Global error ── */}
-      {globalError && (
-        <div className="auth-global-error" role="alert">
-          {globalError}
-        </div>
-      )}
-
-      {/* ── Form ── */}
-      <form className="auth-form" onSubmit={handleSubmit} noValidate>
-        {isSignUp && (
-          <Field
-            label="Full name"
-            id={`${uid}-name`}
-            type="text"
-            autoComplete="name"
-            placeholder="Alex Johnson"
-            value={form.name}
-            onChange={handleChange('name')}
-            onBlur={handleBlur('name')}
-            error={touched.name ? errors.name : undefined}
-            disabled={isLoading}
-            required
-          />
-        )}
-
-        <Field
-          label="Email address"
-          id={`${uid}-email`}
-          type="email"
-          autoComplete="email"
-          placeholder="alex@example.com"
-          value={form.email}
-          onChange={handleChange('email')}
-          onBlur={handleBlur('email')}
-          error={touched.email ? errors.email : undefined}
-          disabled={isLoading}
-          required
-        />
-
-        <div className="auth-field">
-          <label className="auth-field__label" htmlFor={`${uid}-password`}>
-            Password
-            {isSignUp && (
-              <span className="auth-field__required" aria-hidden="true">
-                {' '}
-                *
-              </span>
-            )}
-          </label>
-          <div className="auth-field__input-wrap">
-            <input
-              id={`${uid}-password`}
-              type={showPassword ? 'text' : 'password'}
-              autoComplete={isSignUp ? 'new-password' : 'current-password'}
-              placeholder={isSignUp ? 'At least 8 characters' : 'Your password'}
-              value={form.password}
-              onChange={handleChange('password')}
-              onBlur={handleBlur('password')}
-              disabled={isLoading}
-              required
-              aria-required="true"
-              aria-invalid={!!(touched.password && errors.password)}
-              aria-describedby={`${uid}-password-error`}
-              className={`auth-field__input auth-field__input--password${touched.password && errors.password ? ' auth-field__input--error' : ''}`}
-            />
-            <PasswordToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />
-          </div>
-          <div className="auth-field__foot">
-            {touched.password && errors.password ? (
-              <p id={`${uid}-password-error`} className="auth-field__error" role="alert">
-                {errors.password}
-              </p>
-            ) : (
-              <p className="auth-field__helper" aria-live="polite" />
-            )}
-          </div>
-        </div>
-
-        {/* ── Submit ── */}
-        <button
-          type="submit"
-          className={`auth-btn auth-btn--primary${isSuccess ? ' auth-btn--success' : ''}`}
-          disabled={isLoading || isSuccess || isFormInvalid}
-          data-state={isSuccess ? 'success' : isLoading ? 'loading' : undefined}
-        >
-          {isLoading ? (
-            <>
-              <Loader size={16} className="auth-btn__spinner" aria-hidden="true" />
-              <span>{submitLabel}</span>
-            </>
-          ) : isSuccess ? (
-            <>
-              <span>Redirecting…</span>
-            </>
-          ) : (
-            <span>{submitLabel}</span>
-          )}
-        </button>
-      </form>
-
-      {/* ── Footer link ── */}
+      {/* ── Footer link (toggle signin ↔ signup) ── */}
       <p className="auth-card__footer">
         {footerText}{' '}
         <Link to={footerLink} className="auth-card__footer-link">
@@ -380,20 +94,18 @@ export function AuthCard({ mode }: AuthCardProps) {
         </Link>
       </p>
 
-      {/* ── ToS for sign-up ── */}
-      {isSignUp && (
-        <p className="auth-card__legal">
-          By creating an account, you agree to our{' '}
-          <a href="/terms" className="auth-card__legal-link">
-            Terms of Service
-          </a>{' '}
-          and{' '}
-          <a href="/privacy" className="auth-card__legal-link">
-            Privacy Policy
-          </a>
-          .
-        </p>
-      )}
+      {/* ── ToS ── */}
+      <p className="auth-card__legal">
+        By continuing, you agree to our{' '}
+        <a href="/terms" className="auth-card__legal-link">
+          Terms of Service
+        </a>{' '}
+        and{' '}
+        <a href="/privacy" className="auth-card__legal-link">
+          Privacy Policy
+        </a>
+        .
+      </p>
 
       <style>{`
         /* ── Card ── */
@@ -404,6 +116,7 @@ export function AuthCard({ mode }: AuthCardProps) {
           padding: 36px 36px 28px;
           box-shadow: 6px 6px 0 0 var(--auth-border, #000000);
           width: 100%;
+          text-align: center;
         }
 
         .auth-card__header {
@@ -472,196 +185,9 @@ export function AuthCard({ mode }: AuthCardProps) {
           cursor: not-allowed;
         }
 
-        /* ── Primary submit button ── */
-        .auth-btn--primary {
-          background: var(--auth-accent, #ff90e8);
-          color: var(--auth-accent-ink, #000000);
-          box-shadow: 4px 4px 0 0 var(--auth-border, #000000);
-          font-size: 16px;
-          margin-top: 4px;
-        }
-
-        @media (hover: hover) {
-          .auth-btn--primary:not(:disabled):hover {
-            background: #ff7edb;
-            transform: translate(-1px, -1px);
-            box-shadow: 6px 6px 0 0 var(--auth-border, #000000);
-          }
-        }
-
-        .auth-btn--primary:not(:disabled):active {
-          transform: translate(0, 0);
-          box-shadow: 2px 2px 0 0 var(--auth-border, #000000);
-        }
-
-        .auth-btn--primary:focus-visible {
-          outline: 3px solid var(--auth-border, #000000);
-          outline-offset: 2px;
-        }
-
-        .auth-btn--success {
-          background: var(--auth-highlight, #f1f333) !important;
-        }
-
-        /* ── Spinner ── */
-        .auth-btn__spinner {
-          animation: auth-spin 0.8s linear infinite;
-        }
-
-        @keyframes auth-spin {
-          to { transform: rotate(360deg); }
-        }
-
-        /* ── Divider ── */
-        .auth-divider {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin: 20px 0;
-          color: #999999;
-          font-size: 13px;
-        }
-
-        .auth-divider::before,
-        .auth-divider::after {
-          content: '';
-          flex: 1;
-          height: 1px;
-          background: #e0e0e0;
-        }
-
-        /* ── Form ── */
-        .auth-form {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        /* ── Field ── */
-        .auth-field {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .auth-field__label {
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--auth-border, #000000);
-          letter-spacing: -0.2px;
-        }
-
-        .auth-field__required {
-          color: #999;
-        }
-
-        .auth-field__input-wrap {
-          position: relative;
-        }
-
-        .auth-field__input {
-          width: 100%;
-          height: 44px;
-          padding: 0 12px;
-          background: #ffffff;
-          border: 2px solid var(--auth-border, #000000);
-          border-radius: 8px;
-          font-size: 16px;
-          font-family: inherit;
-          color: var(--auth-border, #000000);
-          outline: none;
-          transition:
-            border-color var(--auth-dur-med, 200ms) var(--auth-ease-out),
-            background-color var(--auth-dur-med, 200ms) var(--auth-ease-out);
-          /* Constant border — no layout shift */
-          box-sizing: border-box;
-        }
-
-        .auth-field__input::placeholder {
-          color: #aaaaaa;
-        }
-
-        @media (hover: hover) {
-          .auth-field__input:hover:not(:disabled):not(:focus) {
-            background: #fafafa;
-          }
-        }
-
-        .auth-field__input:focus {
-          border-color: var(--auth-border, #000000);
-          background: #ffffff;
-          /* Focus ring via box-shadow — no outline shift */
-          box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
-        }
-
-        .auth-field__input--error {
-          border-color: var(--auth-danger, #dc341e);
-        }
-
-        .auth-field__input--error:focus {
-          box-shadow: 0 0 0 3px rgba(220, 52, 30, 0.2);
-        }
-
-        .auth-field__input:disabled {
-          opacity: 0.55;
-          cursor: not-allowed;
-          background: #f5f5f5;
-        }
-
-        /* Password toggle */
-        .auth-field__toggle {
-          position: absolute;
-          right: 10px;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: #666;
-          padding: 4px;
-          display: flex;
-          align-items: center;
-          border-radius: 4px;
-          outline: none;
-        }
-
-        .auth-field__toggle:focus-visible {
-          outline: 2px solid var(--auth-border, #000000);
-          outline-offset: 1px;
-        }
-
-        .auth-field__input--password {
-          padding-right: 40px;
-        }
-
-        /* ── Field foot (helper / error) ── */
-        .auth-field__foot {
-          min-height: 18px;
-        }
-
-        .auth-field__error {
-          font-size: 13px;
-          color: var(--auth-danger, #dc341e);
-          margin: 0;
-          line-height: 18px;
-        }
-
-        .auth-field__helper {
-          font-size: 13px;
-          color: #999999;
-          margin: 0;
-          line-height: 18px;
-        }
-
-        /* ── Global error ── */
-        .auth-global-error {
-          padding: 10px 14px;
-          background: #fff0ee;
-          border: 2px solid var(--auth-danger, #dc341e);
-          border-radius: 8px;
-          font-size: 14px;
-          color: var(--auth-danger, #dc341e);
-          margin-bottom: 4px;
+        /* Slightly more breathing room when this is the lone action */
+        .auth-btn--google-lone {
+          margin-bottom: 8px;
         }
 
         /* ── Footer ── */
@@ -716,12 +242,8 @@ export function AuthCard({ mode }: AuthCardProps) {
 
         /* ── Reduced motion ── */
         @media (prefers-reduced-motion: reduce) {
-          .auth-btn,
-          .auth-field__input {
+          .auth-btn {
             transition: none;
-          }
-          .auth-btn__spinner {
-            animation: none;
           }
         }
       `}</style>

@@ -1,36 +1,64 @@
-/*
+/**
  * Auth routes — Google OAuth (Passport) + email/password sign-in/sign-up.
  * Mounted at /api/auth/*
+ *
+ * Uses Drizzle for all user CRUD:
+ *   - Google OAuth → upsert user via .onConflictDoUpdate()
+ *   - Email/password → insert + LocalStrategy verify (dev convenience only)
+ *
+ * Note: Spec says Google-only for v2. Email/password is here for dev/testing
+ * convenience and will be removed when we wire JWT-only (Phase 2 of roadmap).
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { Strategy as GoogleOAuth2Strategy } from 'passport-google-oauth20';
 import { Strategy as LocalStrategy } from 'passport-local';
-import { query } from '@/db';
+import { eq } from 'drizzle-orm';
+import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
 
 const router = Router();
+
+// ── Type for the user object we put on req.user / return to the client ──
+type SafeUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+  points: number;
+  isAdmin: boolean;
+};
+
+function toSafeUser(row: typeof schema.users.$inferSelect): SafeUser {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.displayName,
+    avatarUrl: row.avatarUrl,
+    points: row.points,
+    isAdmin: row.isAdmin,
+  };
+}
+
 /* ── Passport Local Strategy (email/password) ── */
 passport.use(
   new LocalStrategy(
     { usernameField: 'email', passwordField: 'password' },
     async (email, password, done) => {
       try {
-        const result = await query(
-          'SELECT id, email, display_name, avatar_url, points, is_admin, password_hash FROM users WHERE email = $1',
-          [email]
-        );
-        const user = result.rows[0];
-        if (!user) return done(null, false, { message: 'Invalid email or password.' });
+        const [user] = await db
+          .select()
+          .from(schema.users)
+          .where(eq(schema.users.email, email))
+          .limit(1);
 
-        // TODO: replace with bcrypt.compare(password, user.password_hash) before production.
+        // TODO: replace with bcrypt.compare(password, user.passwordHash) before prod.
         // Hackathon shortcut — plaintext compare:
-        if (user.password_hash !== password) {
+        if (!user?.passwordHash || user.passwordHash !== password) {
           return done(null, false, { message: 'Invalid email or password.' });
         }
 
-        const { password_hash: _pw, ...safeUser } = user;
-        return done(null, safeUser);
+        return done(null, toSafeUser(user));
       } catch (err) {
         return done(err as Error, false);
       }
@@ -44,8 +72,26 @@ if (
   process.env.GOOGLE_CLIENT_SECRET &&
   process.env.GOOGLE_CALLBACK_URL
 ) {
+  // @types/passport-google-oauth20 v2 narrows the constructor to the
+  // WithRequest overload only — cast through `unknown` to restore the
+  // 4-arg callback signature we actually want.
+  const StrategyCtor = GoogleOAuth2Strategy as unknown as new (
+    options: {
+      clientID: string;
+      clientSecret: string;
+      callbackURL: string;
+      scope: string[];
+    },
+    verify: (
+      accessToken: string,
+      refreshToken: string,
+      profile: unknown,
+      done: (err: Error | null, user?: unknown) => void
+    ) => Promise<void> | void
+  ) => GoogleOAuth2Strategy;
+
   passport.use(
-    new GoogleOAuth2Strategy(
+    new StrategyCtor(
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -55,33 +101,43 @@ if (
       async (
         _accessToken: string,
         _refreshToken: string,
-        profile: {
+        profile: unknown,
+        done: (err: Error | null, user?: unknown) => void
+      ) => {
+        const p = profile as {
           id?: string;
           displayName?: string;
           emails?: { value: string }[];
           photos?: { value: string }[];
-        },
-        done: (err: Error | null, user?: unknown) => void
-      ) => {
-        // Upsert user — create if first login, update name/avatar if returning
-        const { id: googleId, displayName, emails, photos } = profile;
+        };
+        const { id: googleId, displayName, emails, photos } = p;
         const email = emails?.[0]?.value;
         const avatarUrl = photos?.[0]?.value;
 
         if (!email) return done(new Error('No email returned from Google.'), undefined);
 
         try {
-          const result = await query(
-            `INSERT INTO users (google_id, display_name, email, avatar_url)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (email) DO UPDATE SET
-               google_id = COALESCE(EXCLUDED.google_id, users.google_id),
-               display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-               avatar_url  = COALESCE(EXCLUDED.avatar_url,  users.avatar_url)
-             RETURNING id, email, display_name, avatar_url, points, is_admin`,
-            [googleId, displayName, email, avatarUrl]
-          );
-          return done(null, result.rows[0]);
+          // Drizzle upsert: insert new user, or update name/avatar if returning
+          const [user] = await db
+            .insert(schema.users)
+            .values({
+              googleId: googleId ?? null,
+              displayName: displayName ?? email.split('@')[0],
+              email,
+              avatarUrl: avatarUrl ?? null,
+            })
+            .onConflictDoUpdate({
+              target: schema.users.email,
+              set: {
+                googleId: googleId ?? null,
+                displayName: displayName ?? email.split('@')[0],
+                avatarUrl: avatarUrl ?? null,
+                updatedAt: new Date(),
+              },
+            })
+            .returning();
+
+          return done(null, toSafeUser(user));
         } catch (err) {
           return done(err as Error, undefined);
         }
@@ -91,17 +147,18 @@ if (
 }
 
 passport.serializeUser((user, done) => {
-  // Store the user id in the session
-  done(null, (user as { id: number }).id);
+  done(null, (user as { id: string }).id);
 });
 
-passport.deserializeUser(async (id: number, done) => {
+passport.deserializeUser(async (id: string, done) => {
   try {
-    const result = await query(
-      'SELECT id, email, display_name, avatar_url, points, is_admin FROM users WHERE id = $1',
-      [id]
-    );
-    done(null, result.rows[0] ?? null);
+    const [user] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, id))
+      .limit(1);
+
+    done(null, user ? toSafeUser(user) : null);
   } catch (err) {
     done(err as Error, undefined);
   }
@@ -123,18 +180,11 @@ if (
   process.env.GOOGLE_CLIENT_SECRET &&
   process.env.GOOGLE_CALLBACK_URL
 ) {
-  /**
-   * GET /api/auth/google
-   * Initiates Google OAuth flow.
-   */
-  router.get('/google', passport.authenticate('google', { prompt: 'select_account' }));
+  router.get(
+    '/google',
+    passport.authenticate('google', { prompt: 'select_account' })
+  );
 
-  /**
-   * GET /api/auth/google/callback
-   * Google redirects here after consent. Passport middleware handles the rest.
-   * On success → redirects to frontend with session cookie set.
-   * On failure → redirects to /signin?error=oauth_failed
-   */
   router.get(
     '/google/callback',
     passport.authenticate('google', {
@@ -143,10 +193,10 @@ if (
     })
   );
 }
+
 /**
  * POST /api/auth/signup
- * Email/password registration.
- * Body: { name: string; email: string; password: string }
+ * Email/password registration (dev-only convenience).
  */
 router.post('/signup', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -163,19 +213,24 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
       throw new AppError(400, 'Password must be at least 8 characters.');
     }
 
-    // TODO: hash password with bcrypt before storing.
-    // For hackathon speed, store plaintext — replace with bcrypt before production.
-    const result = await query(
-      `INSERT INTO users (display_name, email, password_hash)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
-       RETURNING id, email, display_name, avatar_url, points, is_admin`,
-      [name, email, password]
-    );
+    // TODO: hash with bcrypt before prod.
+    const [user] = await db
+      .insert(schema.users)
+      .values({
+        displayName: name,
+        email,
+        passwordHash: password,
+      })
+      .onConflictDoUpdate({
+        target: schema.users.email,
+        set: { displayName: name, passwordHash: password, updatedAt: new Date() },
+      })
+      .returning();
 
-    req.login(result.rows[0], (err) => {
+    const safe = toSafeUser(user);
+    req.login(safe, (err) => {
       if (err) return next(err);
-      return res.status(201).json({ user: result.rows[0] });
+      return res.status(201).json({ user: safe });
     });
   } catch (err) {
     next(err);
@@ -184,20 +239,19 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
 
 /**
  * POST /api/auth/signin
- * Email/password sign-in.
- * Body: { email: string; password: string }
  */
 router.post('/signin', (req: Request, res: Response, next: NextFunction) => {
-  passport.authenticate('local', (err: Error | null, user: Express.User | false) => {
-    if (err) return next(err);
-    if (!user) {
-      return next(new AppError(401, 'Invalid email or password.'));
+  passport.authenticate(
+    'local',
+    (err: Error | null, user: Express.User | false) => {
+      if (err) return next(err);
+      if (!user) return next(new AppError(401, 'Invalid email or password.'));
+      req.login(user, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        return res.json({ user });
+      });
     }
-    req.login(user, (loginErr) => {
-      if (loginErr) return next(loginErr);
-      return res.json({ user });
-    });
-  })(req, res, next);
+  )(req, res, next);
 });
 
 /**
@@ -206,7 +260,7 @@ router.post('/signin', (req: Request, res: Response, next: NextFunction) => {
 router.post('/signout', (req: Request, res: Response) => {
   req.logout((err) => {
     if (err) return res.status(500).json({ message: 'Sign-out failed.' });
-    req.session.destroy((sessErr) => {
+    req.session?.destroy((sessErr) => {
       if (sessErr) return res.status(500).json({ message: 'Session destruction failed.' });
       res.clearCookie('connect.sid');
       return res.json({ ok: true });
@@ -216,7 +270,6 @@ router.post('/signout', (req: Request, res: Response) => {
 
 /**
  * GET /api/auth/me
- * Returns the currently authenticated user, or 401.
  */
 router.get('/me', requireAuth, (req: Request, res: Response) => {
   res.json({ user: req.user });

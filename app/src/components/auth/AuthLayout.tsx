@@ -10,6 +10,9 @@
  * Left (40%): dark brand panel — TruthLoop wordmark + tagline + decorative mark
  * Right (60%): off-white paper — form card, vertically centred
  *
+ * Designed to sit BENEATH <Nav />. The parent page is a flex column with
+ * `min-h-screen`; this component fills the remaining height via `flex: 1`.
+ *
  * Mobile: stacked — brand panel collapses to a compact header bar,
  * form panel takes full width below it.
  */
@@ -79,13 +82,16 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         }
 
         /* ── Reset ── */
+        /* flex: 1 so the parent <div className="flex flex-col min-h-screen">
+           + <Nav /> + <AuthLayout> stack correctly without overflow. */
         .auth-root {
           display: flex;
-          min-height: 100dvh;
+          flex: 1;
           background: var(--auth-paper);
           color: var(--auth-border);
           font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
           overflow-x: clip;
+          min-height: 560px; /* prevent collapse when content is tiny */
         }
 
         /* ── Left brand panel ── */
