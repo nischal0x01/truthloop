@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Fonts (Latin subset only — keeps the bundle small).
 // Primary face: ABC Favorit (Gumroad signature, paid).
@@ -25,8 +26,22 @@ import '@fontsource/inter/700.css';
 import './index.css';
 import App from './App';
 
+// One client for the whole app. Defaults are fine for a 48h hackathon —
+// auth queries manage their own staleTime / retry in the contexts.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </StrictMode>
 );

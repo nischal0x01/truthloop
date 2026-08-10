@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult } from 'pg';
+import { Pool, PoolClient, QueryResult, type QueryResultRow } from 'pg';
 import { config } from '@/config';
 import { logger } from '@/utils/logger';
 
@@ -13,18 +13,29 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
-pool.on('error', (err) => {
-  logger.error('Unexpected error on idle client', err);
-});
+// @types/pg v8 changed the 'error' event signature; cast back to the classic form.
+(pool as unknown as { on: (e: string, l: (err: Error) => void) => void }).on(
+  'error',
+  (err: Error) => {
+    logger.error({ err }, 'Unexpected error on idle client');
+  }
+);
 
-export async function query<T = unknown>(
+export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
   const start = Date.now();
-  const result = await pool.query<T>(text, params);
+  // @types/pg v8 prefers the config-object form; both are equivalent at runtime.
+  const result = await (
+    pool as unknown as {
+      query: <R extends QueryResultRow>(
+        cfg: { text: string; values?: unknown[] }
+      ) => Promise<QueryResult<R>>;
+    }
+  ).query<T>({ text, values: params });
   const duration = Date.now() - start;
-  logger.info('Executed query', { text, duration, rows: result.rowCount });
+  logger.info({ text, duration, rows: result.rowCount }, 'Executed query');
   return result;
 }
 
@@ -53,9 +64,32 @@ export async function healthCheck(): Promise<boolean> {
   try {
     await pool.query('SELECT 1');
     return true;
-  } catch {
+  } catch (err) {
+    logger.error({ err }, 'Database health check failed');
     return false;
   }
+}
+
+/**
+ * Verify the pool can reach the DB at boot time. Logs the resolved
+ * connection target + ping result so you can see "DB connected" on startup
+ * instead of waiting for the first query to fail.
+ */
+export async function connectDb(): Promise<boolean> {
+  const target = {
+    host: config.database.host,
+    port: config.database.port,
+    database: config.database.database,
+    user: config.database.user,
+  };
+  logger.info(target, 'Connecting to database');
+  const ok = await healthCheck();
+  if (ok) {
+    logger.info(target, 'Database connected');
+  } else {
+    logger.error(target, 'Database connection FAILED — check DATABASE_URL / credentials');
+  }
+  return ok;
 }
 
 export { pool };

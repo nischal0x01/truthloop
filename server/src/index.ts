@@ -1,3 +1,7 @@
+// Load .env FIRST — must be before any import that reads process.env
+// (e.g. @/utils/db which constructs the pg pool at module-init time).
+import 'dotenv/config';
+
 import 'express-async-errors';
 import express from 'express';
 import session from 'express-session';
@@ -5,14 +9,12 @@ import passport from 'passport';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import dotenv from 'dotenv';
 import { config } from '@/config';
 import { logger } from '@/utils/logger';
 import { morganMiddleware } from '@/middleware/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/errorHandler';
+import { connectDb } from '@/utils/db';
 import routes from '@/routes';
-
-dotenv.config();
 
 const app = express();
 const PORT = config.port;
@@ -37,7 +39,26 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Security middleware
-app.use(helmet());
+//
+// Default helmet blocks all images to 'self' + data:. We need to widen
+// img-src to allow Google OAuth profile photos served from
+// *.googleusercontent.com — that's where Google hosts avatars returned by
+// the People API. Add any other avatar CDNs here (Gravatar, GitHub, etc.)
+// as we wire them up.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        imgSrc: [
+          "'self'",
+          'data:',
+          'https://lh3.googleusercontent.com',
+          'https://*.googleusercontent.com',
+        ],
+      },
+    },
+  })
+);
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
@@ -76,9 +97,13 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   logger.info(`Server running on http://localhost:${PORT}`);
   logger.info(`Environment: ${config.nodeEnv}`);
+
+  // Eagerly verify the DB pool can reach Postgres — log on boot instead of
+  // waiting for the first request to surface a connection error.
+  await connectDb();
 });
 
 // Graceful shutdown
