@@ -7,12 +7,20 @@
  *  2. Insert + return         → query builder with .returning()
  *  3. Aggregations / CTEs     → raw SQL escape hatch via `sql` template
  */
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { eq, sql, desc, and, gte } from 'drizzle-orm';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
 
 const router = Router();
+
+/** Reject unauthenticated requests. */
+function requireAuth(req: Request, _res: Response, next: NextFunction) {
+  if (!req.isAuthenticated()) {
+    throw new AppError(401, 'You must be signed in.');
+  }
+  next();
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // GET /claims
@@ -26,6 +34,36 @@ router.get('/', async (_req, res) => {
     .orderBy(desc(schema.claims.publishedAt), desc(schema.claims.createdAt));
 
   res.json({ claims: rows });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /claims/me/guesses
+// MUST be registered before /:id — Express matches in registration order,
+// so /me would otherwise be captured as :id and return 404.
+// Returns { [claim_id]: { answer, correct } } for the signed-in user.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/me/guesses', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+
+  const rows = await db
+    .select({
+      claimId: schema.guesses.claimId,
+      userAnswer: schema.guesses.userAnswer,
+      isCorrect: schema.guesses.isCorrect,
+      createdAt: schema.guesses.createdAt,
+    })
+    .from(schema.guesses)
+    .where(eq(schema.guesses.userId, userId));
+
+  res.json({
+    guesses: rows.reduce<Record<string, { answer: 'real' | 'fake'; correct: boolean }>>(
+      (acc, g) => {
+        acc[g.claimId] = { answer: g.userAnswer, correct: g.isCorrect };
+        return acc;
+      },
+      {}
+    ),
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -51,19 +89,18 @@ router.get('/:id', async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────
 // POST /claims/:id/guess
 // Record a vote. One vote per user — UNIQUE(user_id, claim_id) enforces this.
+// User identity comes from the session (req.user.id), not the request body.
 // ──────────────────────────────────────────────────────────────────────────
-router.post('/:id/guess', async (req, res) => {
+router.post('/:id/guess', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
   const { id } = req.params;
-  const { user_id, user_answer } = req.body as {
-    user_id?: string;
-    user_answer?: 'real' | 'fake';
-  };
+  const { user_answer } = req.body as { user_answer?: 'real' | 'fake' };
 
-  if (!user_id || !user_answer) {
-    throw new AppError(400, 'user_id and user_answer are required');
+  if (!user_answer) {
+    throw new AppError(400, 'user_answer is required ("real" or "fake").');
   }
   if (!['real', 'fake'].includes(user_answer)) {
-    throw new AppError(400, 'user_answer must be "real" or "fake"');
+    throw new AppError(400, 'user_answer must be "real" or "fake".');
   }
 
   // Fetch claim to compute is_correct
@@ -79,16 +116,31 @@ router.post('/:id/guess', async (req, res) => {
 
   const isCorrect = claim.verdict === user_answer;
 
-  // INSERT guess — Drizzle handles parameterized binding
-  const [guess] = await db
-    .insert(schema.guesses)
-    .values({
-      userId: user_id,
-      claimId: id,
-      userAnswer: user_answer,
-      isCorrect,
-    })
-    .returning();
+  // INSERT guess — Drizzle handles parameterized binding.
+  // The UNIQUE(user_id, claim_id) constraint will surface as a Postgres
+  // 23505 error if the user already voted — we translate it to a 409 below.
+  let guess: typeof schema.guesses.$inferSelect;
+  try {
+    [guess] = await db
+      .insert(schema.guesses)
+      .values({
+        userId,
+        claimId: id,
+        userAnswer: user_answer,
+        isCorrect,
+      })
+      .returning();
+  } catch (err) {
+    // Drizzle wraps the underlying pg error in `cause`; the SQLSTATE lives there.
+    const cause = (err as { cause?: unknown })?.cause;
+    const code =
+      (cause && typeof cause === 'object' && 'code' in cause && (cause as { code?: unknown }).code) ||
+      (err && typeof err === 'object' && 'code' in err && (err as { code?: unknown }).code);
+    if (code === '23505') {
+      throw new AppError(409, 'You have already voted on this claim.');
+    }
+    throw err;
+  }
 
   // Increment vote_count on the claim (denormalised counter)
   await db
@@ -104,18 +156,25 @@ router.post('/:id/guess', async (req, res) => {
         points: sql`${schema.users.points} + 10`,
         updatedAt: new Date(),
       })
-      .where(eq(schema.users.id, user_id));
+      .where(eq(schema.users.id, userId));
   }
 
   res.status(201).json({
-    guess,
+    guess: {
+      claimId: guess.claimId,
+      userAnswer: guess.userAnswer,
+      isCorrect: guess.isCorrect,
+      createdAt: guess.createdAt,
+    },
     correct: isCorrect,
+    pointsAwarded: isCorrect ? 10 : 0,
     claim: {
       id: claim.id,
       text: claim.text,
       verdict: claim.verdict,
       explanation: claim.explanation,
       sourceUrl: claim.sourceUrl,
+      category: claim.category,
     },
   });
 });

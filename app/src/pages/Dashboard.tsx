@@ -197,7 +197,7 @@ export function Dashboard() {
             size="lg"
             className="border-2 border-black rounded-lg hover-lift"
           >
-            <Link to="/">View leaderboard</Link>
+            <Link to="/dashboard">View dashboard</Link>
           </Button>
         </section>
       </main>

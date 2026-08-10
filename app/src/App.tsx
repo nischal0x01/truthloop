@@ -6,20 +6,21 @@
  *   - <BrowserRouter>   → enables react-router hooks in every component below.
  *   - <Routes>          → renders the active page.
  *
- * Route map (truth source lives in `.ai/03-system-architecture.md` §2.2):
- *   /              → public landing page
- *   /signin        → public auth form (redirects authenticated users to /dashboard)
- *   /signup        → public auth form (redirects authenticated users to /dashboard)
+ * Route map:
+ *   /              → RootRoute — renders Feed if signed in, Landing if not
+ *   /signin        → public auth form (redirects authenticated users to /)
+ *   /signup        → public auth form (redirects authenticated users to /)
  *   /dashboard     → protected, behind <ProtectedRoute />
+ *   /feed/*        → legacy alias → 308 to /
+ *   *              → catch-all → /
  *
- * To add a new protected page later:
- *   <Route element={<ProtectedRoute />}>
- *     <Route path="/leaderboard" element={<Leaderboard />} />
- *     <Route path="/forecast" element={<Forecast />} />
- *   </Route>
+ * Why `/` is the feed for signed-in users:
+ *   - "Where am I after login?" always has one answer.
+ *   - Avoids the redirect chain (auth → /feed → /) that caused the nav flicker.
  */
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { Nav } from '@/components/landing/nav';
 import { Hero } from '@/components/landing/hero';
 import { WhyTruthLoop } from '@/components/landing/why-truthloop';
@@ -33,12 +34,9 @@ import { AuthProvider, useAuth } from '@/contexts/auth-context';
 import { SignIn } from '@/pages/SignIn';
 import { SignUp } from '@/pages/SignUp';
 import { Dashboard } from '@/pages/Dashboard';
+import { Feed } from '@/pages/Feed';
 
-/* Hallmark · macrostructure: Long Document · tone: editorial + playful
- * theme: Gumroad system (off-white #f4f4f0 · hot-pink #ff90e8 · ABC Favorit)
- * enrichment: none (typography only)
- * nav: N1b canonical · footer: Ft1 editorial statement
- */
+/* ── Landing (marketing) ── */
 
 const Landing = () => (
   <div className="min-h-screen bg-background text-foreground">
@@ -55,13 +53,42 @@ const Landing = () => (
   </div>
 );
 
+/* ── Root route: Feed if signed-in, Landing otherwise ── */
+
+function RootRoute() {
+  const { status } = useAuth();
+  const location = useLocation();
+
+  // While we don't yet know who's signed in, render a tiny neutral loader
+  // so the user never sees the marketing landing flash in for a second
+  // before being replaced by the feed.
+  if (status === 'loading') {
+    return (
+      <div
+        role="status"
+        aria-label="Loading"
+        className="min-h-screen w-full grid place-items-center bg-background text-foreground"
+      >
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (status === 'authenticated') {
+    // Preserve search params (e.g. ?welcome=true from OAuth callback)
+    return <Feed initialSearch={location.search} />;
+  }
+
+  return <Landing />;
+}
+
 /**
  * Bounce signed-in users away from /signin or /signup — they have no business
  * there. Keeps the landing flow clean.
  */
 function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
-  if (status === 'authenticated') return <Navigate to="/dashboard" replace />;
+  if (status === 'authenticated') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -70,9 +97,10 @@ const App = () => {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public */}
-          <Route path="/" element={<Landing />} />
+          {/* Root — adaptive */}
+          <Route path="/" element={<RootRoute />} />
 
+          {/* Auth — bounce signed-in users to / */}
           <Route
             path="/signin"
             element={
@@ -95,7 +123,10 @@ const App = () => {
             <Route path="/dashboard" element={<Dashboard />} />
           </Route>
 
-          {/* Fallback */}
+          {/* Legacy /feed alias → / (keeps old bookmarks + nav links alive) */}
+          <Route path="/feed/*" element={<Navigate to="/" replace />} />
+
+          {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
