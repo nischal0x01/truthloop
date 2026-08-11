@@ -20,7 +20,7 @@
 
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
@@ -37,8 +37,10 @@ import { UserAvatar } from '@/components/auth/UserAvatar';
 import {
   claimKeys,
   claimsApi,
+  CATEGORY_META,
   type Claim,
   type ClaimVerdict,
+  type ClaimCategory,
   type UserGuessMap,
 } from '@/lib/claims';
 
@@ -57,6 +59,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedCategory, setSelectedCategory] = useState<ClaimCategory | null>(null);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
 
@@ -127,15 +130,22 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   /* ── Reorder: first unvoted on top (featured), rest unvoted, then voted ── */
   const orderedClaims = useMemo(() => {
     if (claims.length === 0) return [] as Claim[];
+    let filtered = claims;
+
+    // Apply category filter
+    if (selectedCategory) {
+      filtered = claims.filter((c) => c.category === selectedCategory);
+    }
+
     const unvoted: Claim[] = [];
     const voted: Claim[] = [];
-    for (const c of claims) {
+    for (const c of filtered) {
       if (guesses[c.id]) voted.push(c);
       else unvoted.push(c);
     }
     return [...unvoted, ...voted];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claimsQuery.data, guessesQuery.data]);
+  }, [claimsQuery.data, guessesQuery.data, selectedCategory]);
 
   const featuredId = orderedClaims[0] && !guesses[orderedClaims[0].id]
     ? orderedClaims[0].id
@@ -215,12 +225,6 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
             >
               Leaderboard
             </Link>
-            <a
-              href="#forecast"
-              className="text-label text-foreground hover:underline underline-offset-4"
-            >
-              Scam Forecast
-            </a>
           </nav>
 
           {/* Right side */}
@@ -338,6 +342,37 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 />
               </div>
             )}
+
+            {/* Category filter bar */}
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedCategory(null)}
+                className={`rounded-lg border-2 border-black px-3 py-1.5 text-label-small font-medium transition-all hover-lift ${
+                  selectedCategory === null
+                    ? 'bg-black text-white shadow-hard-sm'
+                    : 'bg-card text-foreground shadow-hard-sm'
+                }`}
+              >
+                All
+              </button>
+              {Object.entries(CATEGORY_META).map(([key, meta]) => {
+                const cat = key as ClaimCategory;
+                const isActive = selectedCategory === cat;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedCategory(isActive ? null : cat)}
+                    className={`rounded-lg border-2 border-black px-3 py-1.5 text-label-small font-medium transition-all hover-lift ${meta.bg} ${meta.ink} ${
+                      isActive ? 'ring-2 ring-black ring-offset-2' : 'shadow-hard-sm'
+                    }`}
+                  >
+                    {meta.icon} {meta.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Error state */}
