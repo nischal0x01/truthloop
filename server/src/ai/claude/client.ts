@@ -1,19 +1,19 @@
 /**
- * MiniMax AI client — OpenAI-compatible interface.
+ * Anthropic Claude client for the claim discovery 3-filter pipeline.
  *
- * Uses the OpenAI SDK pointing at MiniMax's API endpoint.
- * The SDK is configured with:
- * - MiniMax base URL from env
- * - API key from env
- * - Model from env (default: minimax-m2.5)
- * - Per-call timeout (default: 5000ms)
- * - JSON mode response (forced by the SDK)
+ * Uses the official @anthropic-ai/sdk.
+ * Model: claude-haiku-4-5 (cheapest, fast, sufficient for classification tasks).
+ * Configurable via ANTHROPIC_API_KEY + ANTHROPIC_DEFAULT_MODEL env vars.
  *
- * Falls back to safe defaults on any error so the app never breaks.
+ * Every call:
+ * - Wraps user input in <user_input> tags (prompt injection guard)
+ * - Sets a reasonable max_tokens for the output
+ * - Validates response against Zod schema
+ * - Falls back to safe defaults on any error
  */
 
-import OpenAI from 'openai';
-import { MiniMaxError, FALLBACK_FILTER1, FALLBACK_FILTER2, FALLBACK_FILTER3 } from './errors.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { MiniMaxError, FALLBACK_FILTER1, FALLBACK_FILTER2, FALLBACK_FILTER3 } from '../minimax/errors.js';
 import {
   Filter1TruthSchema,
   Filter2SentimentSchema,
@@ -21,7 +21,7 @@ import {
   type Filter1Truth,
   type Filter2Sentiment,
   type Filter3Scam,
-} from './schemas.js';
+} from '../minimax/schemas.js';
 import {
   FILTER1_SYSTEM,
   FILTER2_SYSTEM,
@@ -29,45 +29,31 @@ import {
   filter1UserPrompt,
   filter2UserPrompt,
   filter3UserPrompt,
-} from './prompts.js';
-import { Today } from '../shared.js';
+} from '../minimax/prompts.js';
+import { z } from 'zod';
 
 // ─── Client singleton ────────────────────────────────────────────────────────
-function createClient(): OpenAI {
-  const baseURL = process.env.MINIMAX_BASE_URL ?? 'https://api.minimax.chat/v1';
-  const apiKey = process.env.MINIMAX_API_KEY ?? '';
-
-  if (!apiKey) {
-    throw new MiniMaxError('MINIMAX_API_KEY is not set', 'INVALID_KEY', false);
-  }
-
-  return new OpenAI({
-    baseURL,
-    apiKey,
-    timeout: parseInt(process.env.MINIMAX_TIMEOUT_MS ?? '5000', 10),
-    maxRetries: 1,
-    defaultQuery: {
-      ...(process.env.MINIMAX_MODEL_GROUP ? { 'model_group': process.env.MINIMAX_MODEL_GROUP } : {}),
-    },
+function createClient(): Anthropic {
+  return new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
   });
 }
 
-let _client: OpenAI | null = null;
+let _client: Anthropic | null = null;
 
-function getClient(): OpenAI {
+function getClient(): Anthropic {
   if (!_client) {
     _client = createClient();
   }
   return _client;
 }
 
-// ─── Model resolution ────────────────────────────────────────────────────────
 function getModel(): string {
-  return process.env.MINIMAX_DEFAULT_MODEL ?? 'MiniMax/MiniMax-Text-01';
+  return process.env.ANTHROPIC_DEFAULT_MODEL ?? 'claude-haiku-4-5';
 }
 
 // ─── Core call helper ───────────────────────────────────────────────────────
-async function callMiniMax<T>({
+async function callClaude<T>({
   system,
   user,
   schema,
@@ -84,60 +70,59 @@ async function callMiniMax<T>({
   const modelId = model ?? getModel();
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await client.messages.create({
       model: modelId,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      temperature: 0.2, // low temperature for factual/analytical tasks
       max_tokens: 1024,
+      temperature: 0.2, // low temperature for factual/analytical tasks
+      system,
+      messages: [{ role: 'user', content: user }],
     });
 
-    const raw = response.choices[0]?.message?.content ?? '';
+    const raw = response.content[0]?.type === 'text'
+      ? response.content[0].text
+      : '';
+
+    if (!raw) {
+      throw new MiniMaxError('Claude returned empty response', 'PARSE_ERROR', true);
+    }
 
     // Strip markdown fences if the model wraps in ```json ... ```
     const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-
     const parsed = schema.parse(JSON.parse(cleaned));
     return parsed;
   } catch (err) {
-    // Distinguish error types for better fallback handling
     if (err instanceof SyntaxError) {
-      throw new MiniMaxError(`MiniMax returned invalid JSON: ${err.message}`, 'PARSE_ERROR', true);
+      throw new MiniMaxError(`Claude returned invalid JSON: ${err.message}`, 'PARSE_ERROR', true);
     }
     if (err instanceof z.ZodError) {
       // Schema validation failed — retry once
       if (attempt === 1) {
-        return callMiniMax({ system, user, schema, model, attempt: 2 });
+        return callClaude({ system, user, schema, model, attempt: 2 });
       }
-      throw new MiniMaxError(`MiniMax response failed Zod validation: ${err.message}`, 'PARSE_ERROR', true);
+      throw new MiniMaxError(`Claude response failed Zod validation: ${err.message}`, 'PARSE_ERROR', true);
     }
     if (err instanceof MiniMaxError) {
       throw err;
     }
-    // OpenAI errors (timeout, rate limit, etc.)
+    // Anthropic API errors (rate limit, timeout, etc.)
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('timeout') || msg.includes('TIMEOUT')) {
-      throw new MiniMaxError('MiniMax request timed out', 'TIMEOUT', true);
+      throw new MiniMaxError('Claude request timed out', 'TIMEOUT', true);
     }
-    if (msg.includes('rate_limit') || msg.includes('rate limit')) {
-      throw new MiniMaxError('MiniMax rate limit exceeded', 'RATE_LIMIT', true);
+    if (msg.includes('rate_limit') || msg.includes('rate limit') || msg.includes('429')) {
+      throw new MiniMaxError('Claude rate limit exceeded', 'RATE_LIMIT', true);
     }
-    throw new MiniMaxError(`MiniMax API error: ${msg}`, 'API_ERROR', false);
+    throw new MiniMaxError(`Claude API error: ${msg}`, 'API_ERROR', false);
   }
 }
-
-// ─── Zod import (needed for the parse error catch) ──────────────────────────
-import { z } from 'zod';
 
 // ─── Filter 1: Truth Check ───────────────────────────────────────────────────
 export async function filter1TruthCheck(
   claim: { rawText: string; sourceName: string; sourceUrl?: string }
 ): Promise<Filter1Truth> {
   try {
-    const userPrompt = filter1UserPrompt({ ...claim, today: Today });
-    return await callMiniMax({
+    const userPrompt = filter1UserPrompt(claim);
+    return await callClaude({
       system: FILTER1_SYSTEM,
       user: userPrompt,
       schema: Filter1TruthSchema,
@@ -146,7 +131,6 @@ export async function filter1TruthCheck(
     if (err instanceof MiniMaxError && !err.retryable) {
       return FALLBACK_FILTER1;
     }
-    // retryable errors already exhausted 1 retry above
     return FALLBACK_FILTER1;
   }
 }
@@ -158,7 +142,7 @@ export async function filter2SentimentCheck(
 ): Promise<Filter2Sentiment> {
   try {
     const userPrompt = filter2UserPrompt(claim, f1);
-    return await callMiniMax({
+    return await callClaude({
       system: FILTER2_SYSTEM,
       user: userPrompt,
       schema: Filter2SentimentSchema,
@@ -180,7 +164,7 @@ export async function filter3ScamVerification(
   try {
     const systemPrompt = filter3SystemPrompt(f1, f2);
     const userPrompt = filter3UserPrompt(claim, f1, f2);
-    return await callMiniMax({
+    return await callClaude({
       system: systemPrompt,
       user: userPrompt,
       schema: Filter3ScamSchema,

@@ -2,13 +2,11 @@
  * AI barrel — all AI exports from a single import.
  *
  * Usage:
- *   import { filter1TruthCheck, filter2SentimentCheck, filter3ScamVerification } from '@/ai';
+ *   import { verifyClaim, callScamForecast, callToxicity, callWeeklyNarrative } from '@/ai';
  */
-export {
-  filter1TruthCheck,
-  filter2SentimentCheck,
-  filter3ScamVerification,
-} from './minimax/client.js';
-export { makeDecision } from './minimax/prompts.js';
-export * from './minimax/schemas.js';
+export { verifyClaim, type ClaimVerification } from './claude/verify.js';
+export { callScamForecast, SCAM_FORECAST_FALLBACK, ForecastArraySchema, type ForecastItem, type ForecastArray } from './prompts/scamForecast.js';
+export { callToxicity, TOXICITY_FALLBACK, ToxicitySchema, type ToxicityResult } from './prompts/toxicity.js';
+export { callWeeklyNarrative, NARRATIVE_FALLBACK, NarrativeSchema, type NarrativeResult } from './prompts/weeklyNarrative.js';
+export { AIError } from './prompts/client.js';
 export * from './minimax/errors.js';

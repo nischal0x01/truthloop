@@ -42,7 +42,7 @@ Rules:
  * Claim to fact-check: "${claim.rawText}"
  * Source: ${claim.sourceName}${claim.sourceUrl ? ` (${claim.sourceUrl})` : ''}
  */
-export function filter1UserPrompt(claim: { rawText: string; sourceName: string; sourceUrl?: string; today: string }): string {
+export function filter1UserPrompt(claim: { rawText: string; sourceName: string; sourceUrl?: string }): string {
   return `${userInput(claim.rawText)}
 
 Source: ${claim.sourceName}${claim.sourceUrl ? ` (${claim.sourceUrl})` : ''}

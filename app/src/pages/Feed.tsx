@@ -24,10 +24,11 @@ import { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
-import { Flame, LogOut, Sparkles, TrendingUp } from 'lucide-react';
+import { Flame, Globe, LogOut, Sparkles, TrendingUp } from 'lucide-react';
 import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
+import { DiscoveryCard } from '@/components/feed/DiscoveryCard';
 import {
   ClaimDetailPanel,
   ClaimDetailEmpty,
@@ -42,6 +43,11 @@ import {
   type ClaimVerdict,
   type UserGuessMap,
 } from '@/lib/claims';
+import {
+  discoveriesApi,
+  discoveryKeys,
+  type Discovery,
+} from '@/lib/discoveries';
 
 interface FeedProps {
   /**
@@ -90,6 +96,11 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
     queryFn: () => claimsApi.myGuesses().then((r) => r.guesses),
   });
 
+  const discoveriesQuery = useQuery({
+    queryKey: discoveryKeys.list(20),
+    queryFn: () => discoveriesApi.list(20, 0).then((r) => r.discoveries),
+  });
+
   /* ── Vote mutation ── */
   const voteMutation = useMutation({
     mutationFn: ({ claimId, answer }: { claimId: string; answer: ClaimVerdict }) =>
@@ -122,6 +133,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   /* ── Derived ── */
   const claims: Claim[] = claimsQuery.data ?? [];
   const guesses: UserGuessMap = guessesQuery.data ?? {};
+  const discoveries: Discovery[] = discoveriesQuery.data ?? [];
   const isInitialLoading = claimsQuery.isLoading && !claimsQuery.data;
   const error = (claimsQuery.error || guessesQuery.error) as Error | null;
 
@@ -317,6 +329,29 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               </div>
             )}
           </div>
+
+          {/* ── Discoveries from the web (AI-scraped claims) ── */}
+          {discoveries.length > 0 && (
+            <section className="mb-8" aria-labelledby="discoveries-heading">
+              <div className="mb-4 flex items-center gap-2">
+                <Globe size={16} strokeWidth={2.5} className="text-foreground/60" aria-hidden="true" />
+                <h2
+                  id="discoveries-heading"
+                  className="font-display text-heading-3 font-semibold tracking-display text-foreground"
+                >
+                  Trending online
+                </h2>
+                <span className="text-label-small font-medium text-foreground/50">
+                  AI-curated from the web
+                </span>
+              </div>
+              <div className="space-y-4">
+                {discoveries.slice(0, 3).map((d) => (
+                  <DiscoveryCard key={d.id} discovery={d} />
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Error state */}
           {error && (

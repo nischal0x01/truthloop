@@ -117,25 +117,48 @@ if (
         if (!email) return done(new Error('No email returned from Google.'), undefined);
 
         try {
-          // Drizzle upsert: insert new user, or update name/avatar if returning
-          const [user] = await db
-            .insert(schema.users)
-            .values({
-              googleId: googleId ?? null,
+          // First check if a user with this email already exists.
+          const [existing] = await db
+            .select()
+            .from(schema.users)
+            .where(eq(schema.users.email, email))
+            .limit(1);
+
+          let user: typeof schema.users.$inferSelect;
+
+          if (existing) {
+            // Existing user — update name/avatar. Only touch googleId if this
+            // OAuth flow provides one AND the user doesn't already have one.
+            const updates: Partial<{
+              displayName: string;
+              avatarUrl: string | null;
+              updatedAt: Date;
+              googleId: string | null;
+            }> = {
               displayName: displayName ?? email.split('@')[0],
-              email,
               avatarUrl: avatarUrl ?? null,
-            })
-            .onConflictDoUpdate({
-              target: schema.users.email,
-              set: {
+              updatedAt: new Date(),
+            };
+            if (googleId && !existing.googleId) {
+              updates.googleId = googleId;
+            }
+            [user] = await db
+              .update(schema.users)
+              .set(updates)
+              .where(eq(schema.users.email, email))
+              .returning();
+          } else {
+            // New user — insert with googleId (may be null for manual signup later).
+            [user] = await db
+              .insert(schema.users)
+              .values({
                 googleId: googleId ?? null,
                 displayName: displayName ?? email.split('@')[0],
+                email,
                 avatarUrl: avatarUrl ?? null,
-                updatedAt: new Date(),
-              },
-            })
-            .returning();
+              })
+              .returning();
+          }
 
           return done(null, toSafeUser(user));
         } catch (err) {

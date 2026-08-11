@@ -24,6 +24,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
+import { callToxicity } from '@/ai';
 
 const router = Router();
 
@@ -130,9 +131,39 @@ router.post('/', requireAuth, async (req, res) => {
     if (!parent) throw new AppError(400, 'Parent comment does not belong to this claim.');
   }
 
+  // ── AI toxicity check ────────────────────────────────────────────────────
+  // Per .ai/05-ai-prompts.md §3: every comment is moderated before persisting.
+  // score > 0.7 → reject; 0.4–0.7 → flag; ≤ 0.4 → accept normally.
+  let toxicityScore: number | null = null;
+  let isFlagged = false;
+
+  try {
+    const toxicity = await callToxicity(body);
+    toxicityScore = toxicity.score;
+    isFlagged = toxicity.action === 'flag';
+    if (toxicity.action === 'reject') {
+      throw new AppError(
+        403,
+        'Your comment was flagged as potentially harmful and could not be posted.'
+      );
+    }
+  } catch (err) {
+    // Re-throw AppError (the reject case above); swallow network/Zod errors
+    // and fall back to accepting with a null toxicity score.
+    if (err instanceof AppError) throw err;
+    // toxicityScore stays null — no flags raised
+  }
+
   const [created] = await db
     .insert(schema.comments)
-    .values({ claimId, userId, parentCommentId: parentCommentId ?? null, body })
+    .values({
+      claimId,
+      userId,
+      parentCommentId: parentCommentId ?? null,
+      body,
+      toxicityScore: toxicityScore ?? null,
+      isFlagged,
+    })
     .returning();
 
   const [author] = await db
