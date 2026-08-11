@@ -158,13 +158,13 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const selected = claims.find((c) => c.id === selectedClaimId) ?? null;
   const isPanelOpen = !!selected;
 
-  const openClaim = (id: string) => navigate(`/claim/${id}`);
-  const closePanel = () => navigate('/', { replace: true });
+  const openClaim = (id: string) => navigate(`/claims/${id}`);
+  const closePanel = () => navigate('/claims', { replace: true });
 
   // Deep link to a claim that isn't in the list — bounce to the feed.
   useEffect(() => {
     if (selectedClaimId && claimsQuery.isSuccess && !selected) {
-      navigate('/', { replace: true });
+      navigate('/claims', { replace: true });
     }
   }, [selectedClaimId, claimsQuery.isSuccess, selected, navigate]);
 

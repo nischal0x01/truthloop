@@ -7,20 +7,18 @@
  *   - <Routes>          → renders the active page.
  *
  * Route map:
- *   /              → RootRoute — renders Feed if signed in, Landing if not
- *   /claim/:id     → Feed with that claim open in the detail panel
- *   /signin        → public auth form (redirects authenticated users to /)
- *   /signup        → public auth form (redirects authenticated users to /)
- *   /dashboard     → protected, behind <ProtectedRoute />
- *   /feed/*        → legacy alias → 308 to /
+ *   /              → Landing (unauthenticated) or redirect to /claims
+ *   /claims        → Feed (authenticated) — the main app view after login
+ *   /claims/:id    → Feed with that claim open in the detail panel
+ *   /signin        → public auth form (redirects authenticated users to /claims)
+ *   /signup        → public auth form (redirects authenticated users to /claims)
+ *   /dashboard     → legacy alias → /profile
+ *   /feed/*        → legacy alias → / (collapses to landing or /claims)
  *   *              → catch-all → /
- *
- * Why `/` is the feed for signed-in users:
- *   - "Where am I after login?" always has one answer.
- *   - Avoids the redirect chain (auth → /feed → /) that caused the nav flicker.
  */
 
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Nav } from '@/components/landing/nav';
 import { Hero } from '@/components/landing/hero';
@@ -57,16 +55,20 @@ const Landing = () => (
   </div>
 );
 
-/* ── Root route: Feed if signed-in, Landing otherwise ── */
+/* ── Root route: Landing if signed out, redirect to /claims if signed in ── */
 
-function RootRoute({ claimId }: { claimId?: string }) {
+function RootRoute() {
   const { status } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // While we don't yet know who's signed in, render a tiny neutral loader
-  // so the user never sees the marketing landing flash in for a second
-  // before being replaced by the feed.
+  // All hooks must be called unconditionally and in the same order every render
+  useEffect(() => {
+    if (status === 'authenticated') {
+      navigate(`/claims${location.search}`, { replace: true });
+    }
+  }, [status, navigate, location.search]);
+
   if (status === 'loading') {
     return (
       <div
@@ -80,28 +82,49 @@ function RootRoute({ claimId }: { claimId?: string }) {
   }
 
   if (status === 'authenticated') {
-    // Check for post-OAuth redirect destination (set by ProtectedRoute before redirecting to signin)
-    const redirectTo = sessionStorage.getItem('authRedirectTo');
-    if (redirectTo) {
-      sessionStorage.removeItem('authRedirectTo');
-      navigate(redirectTo, { replace: true });
-      return null;
-    }
-    // Preserve search params (e.g. ?welcome=true from OAuth callback)
-    return <Feed initialSearch={location.search} selectedClaimId={claimId} />;
+    return null;
   }
 
   return <Landing />;
 }
 
-/**
- * /claim/:id — the feed with one claim opened in the detail panel.
- * Selection lives in the URL so the panel is shareable and the back button
- * closes it. Signed-out visitors fall through to the landing page.
- */
-function ClaimRoute() {
+/** /claims — authenticated feed view */
+function ClaimsRoute({ claimId }: { claimId?: string }) {
+  const { status } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  if (status === 'loading') {
+    return (
+      <div
+        role="status"
+        aria-label="Loading"
+        className="min-h-screen w-full grid place-items-center bg-background text-foreground"
+      >
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated') {
+    return <Navigate to="/signin" replace />;
+  }
+
+  // Post-OAuth redirect destination (set by ProtectedRoute before redirecting to signin)
+  const redirectTo = sessionStorage.getItem('authRedirectTo');
+  if (redirectTo) {
+    sessionStorage.removeItem('authRedirectTo');
+    navigate(redirectTo, { replace: true });
+    return null;
+  }
+
+  return <Feed initialSearch={location.search} selectedClaimId={claimId} />;
+}
+
+/** /claims/:id — feed with claim open in detail panel */
+function ClaimDetailRoute() {
   const { id } = useParams<{ id: string }>();
-  return <RootRoute claimId={id} />;
+  return <ClaimsRoute claimId={id} />;
 }
 
 /**
@@ -110,7 +133,7 @@ function ClaimRoute() {
  */
 function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
-  if (status === 'authenticated') return <Navigate to="/" replace />;
+  if (status === 'authenticated') return <Navigate to="/claims" replace />;
   return <>{children}</>;
 }
 
@@ -122,10 +145,14 @@ const App = () => {
           {/* Root — adaptive */}
           <Route path="/" element={<RootRoute />} />
 
-          {/* Feed with a claim open in the detail panel — deep-linkable */}
-          <Route path="/claim/:id" element={<ClaimRoute />} />
+          {/* Main app routes */}
+          <Route path="/claims" element={<ClaimsRoute />} />
+          <Route path="/claims/:id" element={<ClaimDetailRoute />} />
 
-          {/* Auth — bounce signed-in users to / */}
+          {/* Legacy /claim alias — redirect to /claims/:id */}
+          <Route path="/claim/:id" element={<Navigate to="/claims/:id" replace />} />
+
+          {/* Auth — bounce signed-in users to /claims */}
           <Route
             path="/signin"
             element={
@@ -149,7 +176,7 @@ const App = () => {
             <Route path="/leaderboard" element={<Leaderboard />} />
           </Route>
 
-          {/* Legacy aliases — keep old bookmarks alive */}
+          {/* Legacy aliases */}
           <Route path="/dashboard" element={<Navigate to="/profile" replace />} />
           <Route path="/feed/*" element={<Navigate to="/" replace />} />
 

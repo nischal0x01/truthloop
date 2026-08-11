@@ -51,7 +51,10 @@ import {
   type Claim,
   type ClaimVerdict,
   type UserGuessMap,
+  type CategoryMeta,
 } from '@/lib/claims';
+
+const FALLBACK_META: CategoryMeta = { label: 'Claim', icon: '📋', bg: 'bg-muted', ink: 'text-foreground' };
 
 interface ClaimCardProps {
   claim: Claim;
@@ -146,11 +149,19 @@ export function ClaimCard({
           <span className="text-label-small text-foreground/70">
             {timeAgo(claim.publishedAt ?? claim.createdAt)}
           </span>
-          {/* Vote count badge - more visible */}
-          <span className="inline-flex items-center gap-1.5 rounded-full border-2 border-black bg-muted px-2.5 py-1 text-label-small font-bold text-foreground shadow-hard-sm">
-            <Vote size={12} strokeWidth={2.5} aria-hidden="true" />
+          {/* Vote count badge - interactive */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen?.();
+            }}
+            className="group inline-flex items-center gap-1.5 rounded-full border-2 border-black bg-muted px-3 py-1 text-label-small font-bold text-foreground shadow-hard-sm transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-hard active:translate-y-px"
+            aria-label={`${claim.voteCount.toLocaleString()} votes — click to see details`}
+          >
+            <Vote size={12} strokeWidth={2.5} className="transition-transform group-hover:scale-110" aria-hidden="true" />
             <span>{claim.voteCount.toLocaleString()}</span>
-          </span>
+          </button>
         </div>
       </header>
 
@@ -184,7 +195,7 @@ export function ClaimCard({
           onClick={(e) => {
             e.stopPropagation();
             if (onOpen) onOpen();
-            else navigate(`/claim/${claim.id}`);
+            else navigate(`/claims/${claim.id}`);
           }}
           className="flex items-center gap-1 hover:text-foreground"
           aria-label="Discuss this claim"
@@ -303,7 +314,7 @@ function VerdictReveal({
             )}
           </span>
           <span className="text-label-small font-medium text-foreground/70">
-            {CATEGORY_META[claim.category].label}
+            {(CATEGORY_META[claim.category] ?? FALLBACK_META).label}
           </span>
         </div>
         <p className="text-label leading-relaxed text-foreground/90">{claim.explanation}</p>
