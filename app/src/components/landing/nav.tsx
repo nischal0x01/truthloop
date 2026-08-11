@@ -53,12 +53,21 @@ export function Nav() {
           >
             Weekly Report
           </a>
-          <Link
-            to="/leaderboard"
-            className="text-label text-foreground hover:underline underline-offset-4"
-          >
-            Leaderboard
-          </Link>
+          {isAuthenticated ? (
+            <Link
+              to="/leaderboard"
+              className="text-label text-foreground hover:underline underline-offset-4"
+            >
+              Leaderboard
+            </Link>
+          ) : (
+            <a
+              href="#leaderboard"
+              className="text-label text-foreground hover:underline underline-offset-4"
+            >
+              Leaderboard
+            </a>
+          )}
         </nav>
 
         <div className="flex items-center gap-3">

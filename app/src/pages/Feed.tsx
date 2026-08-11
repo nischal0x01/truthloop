@@ -23,7 +23,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Flame, Sparkles, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
@@ -206,10 +206,11 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
           Mobile: single column; the panel becomes a bottom-sheet drawer. */}
       <div className="mx-auto flex w-full max-w-[1600px] min-h-0 flex-1">
         {/* Feed column */}
-        <div
+        <motion.div
+          layout
           className={[
             'min-h-0 flex-1 overflow-y-auto px-6 py-8',
-            isPanelOpen ? 'lg:max-w-2xl' : 'mx-auto max-w-3xl',
+            isPanelOpen ? 'lg:w-[55%] lg:max-w-[55%]' : 'mx-auto max-w-3xl',
           ].join(' ')}
         >
           {/* Welcome banner (post-OAuth) */}
@@ -252,20 +253,16 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 )}
               </div>
 
-              {/* Streak chip — the user is on a streak if their last few votes
-                  were correct. We don't track streaks server-side yet, so we
-                  derive a simple "hot" state from recent correct votes. */}
+              {/* Streak chip */}
               {user && (
                 <StreakChip guesses={guesses} claims={claims} />
               )}
             </div>
 
-            {/* Progress rail — chunky, brand-coloured, clearly readable at a
-                glance. The filled portion uses yellow (highlight) so the user
-                sees their progress without staring at numbers. */}
+            {/* Progress rail - color intensity increases with votes */}
             {claims.length > 0 && (
               <div
-                className="mt-5 h-3 w-full overflow-hidden rounded-md border-2 border-black bg-muted"
+                className="mt-5 h-4 w-full overflow-hidden rounded-md border-2 border-black bg-muted"
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}
@@ -273,7 +270,10 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 aria-label={`${votedCount} of ${totalCount} claims voted`}
               >
                 <motion.div
-                  className="h-full bg-highlight"
+                  className={[
+                    'h-full transition-colors duration-500',
+                    progressPct === 100 ? 'bg-real' : progressPct >= 75 ? 'bg-accent' : progressPct >= 50 ? 'bg-yellow' : 'bg-orange'
+                  ].join(' ')}
                   initial={false}
                   animate={{ width: `${progressPct}%` }}
                   transition={{ type: 'spring', damping: 22, stiffness: 180 }}
@@ -384,13 +384,33 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               </p>
             </div>
           )}
-        </div>
+        </motion.div>
+
+        {/* ── Desktop Detail Panel (docked right) ── */}
+        <AnimatePresence>
+          {isPanelOpen && (
+            <motion.div
+              layout
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: '45%', opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="hidden lg:block min-h-0 border-l-2 border-black"
+            >
+              <div className="h-full overflow-hidden">
+                {panelContent}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* ── Claim Detail Drawer/Modal (covers most of screen) ── */}
-      <ClaimDetailDrawer open={isPanelOpen} onClose={closePanel} fullScreen>
-        {panelContent}
-      </ClaimDetailDrawer>
+      {/* ── Mobile Claim Detail Drawer (hidden on desktop) ── */}
+      <div className="lg:hidden">
+        <ClaimDetailDrawer open={isPanelOpen} onClose={closePanel} fullScreen>
+          {panelContent}
+        </ClaimDetailDrawer>
+      </div>
     </div>
   );
 }

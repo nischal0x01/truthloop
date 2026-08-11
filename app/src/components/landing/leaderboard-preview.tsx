@@ -17,7 +17,7 @@ const previewData = [
 export function LeaderboardPreview() {
   return (
     <section
-      id="leaderboard-preview"
+      id="leaderboard"
       aria-labelledby="leaderboard-h"
       className="border-b-2 border-black bg-yellow"
     >

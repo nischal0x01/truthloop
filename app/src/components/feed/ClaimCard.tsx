@@ -40,6 +40,7 @@ import {
   MessageCircle,
   Sparkles,
   X,
+  Vote,
 } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
 import { VoteButtons } from './VoteButtons';
@@ -141,13 +142,16 @@ export function ClaimCard({
       {/* ── Header: category tile + meta ── */}
       <header className="flex items-center justify-between gap-3 border-b-2 border-black px-5 py-3">
         <CategoryPill category={claim.category} />
-        <span className="flex items-center gap-2 text-label-small font-medium text-foreground/70">
-          <span>{timeAgo(claim.publishedAt ?? claim.createdAt)}</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {claim.voteCount.toLocaleString()} {claim.voteCount === 1 ? 'vote' : 'votes'}
+        <div className="flex items-center gap-3">
+          <span className="text-label-small text-foreground/70">
+            {timeAgo(claim.publishedAt ?? claim.createdAt)}
           </span>
-        </span>
+          {/* Vote count badge - more visible */}
+          <span className="inline-flex items-center gap-1.5 rounded-full border-2 border-black bg-muted px-2.5 py-1 text-label-small font-bold text-foreground shadow-hard-sm">
+            <Vote size={12} strokeWidth={2.5} aria-hidden="true" />
+            <span>{claim.voteCount.toLocaleString()}</span>
+          </span>
+        </div>
       </header>
 
       {/* ── Body: claim text + vote/verdict ── */}
