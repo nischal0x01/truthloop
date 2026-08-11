@@ -58,6 +58,14 @@ export function AppNav({ showClaims = true }: AppNavProps) {
           >
             Leaderboard
           </Link>
+          <Link
+            to="/discussions"
+            className={`text-label hover:underline underline-offset-4 ${
+              location.pathname === '/discussions' || location.pathname.startsWith('/discussions/') ? 'font-semibold' : 'font-normal'
+            }`}
+          >
+            Discussions
+          </Link>
         </nav>
 
         {/* Right side */}
