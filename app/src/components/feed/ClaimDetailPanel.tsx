@@ -16,14 +16,7 @@
 import { useMemo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ExternalLink,
-  Loader2,
-  Lock,
-  MessagesSquare,
-  X,
-  Check,
-} from 'lucide-react';
+import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
 import { VoteButtons } from './VoteButtons';
 import { VoteSlider } from './VoteSlider';
@@ -143,7 +136,12 @@ export function ClaimDetailPanel({
               ...cur,
               comments: cur.comments.map((c) =>
                 c.id === comment.id
-                  ? { ...c, upvotes: comment.upvotes, downvotes: comment.downvotes, myVote: comment.myVote }
+                  ? {
+                      ...c,
+                      upvotes: comment.upvotes,
+                      downvotes: comment.downvotes,
+                      myVote: comment.myVote,
+                    }
                   : c
               ),
             }
@@ -190,6 +188,28 @@ export function ClaimDetailPanel({
 
       {/* ── Scrollable body ── */}
       <div className="min-h-0 overflow-y-auto px-5 py-4">
+        {/* Vote distribution stats */}
+        <div className="mb-4 rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
+          <div className="mb-2 flex items-center justify-between text-label-small font-semibold">
+            <span className="text-real">✓ 847 said Real</span>
+            <span className="text-muted-foreground">vs</span>
+            <span className="text-[#dc341e]">✕ 623 said Fake</span>
+          </div>
+          {/* Distribution bar */}
+          <div className="h-3 overflow-hidden rounded-md border-2 border-black bg-red">
+            <div
+              className="h-full bg-real"
+              style={{ width: '57%' }}
+              role="img"
+              aria-label="57% voted Real, 43% voted Fake"
+            />
+          </div>
+          <div className="mt-2 flex justify-between text-label-small text-muted-foreground">
+            <span>57% Real</span>
+            <span>43% Fake</span>
+          </div>
+        </div>
+
         {/* Vote / verdict */}
         {!hasVoted ? (
           <div className="rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
@@ -287,9 +307,7 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
       <div
         className={[
           'rounded-lg border-2 border-black px-4 py-4 text-center shadow-hard-sm',
-          isReal
-            ? 'bg-real text-white'
-            : 'bg-fake text-white',
+          isReal ? 'bg-real text-white' : 'bg-fake text-white',
         ].join(' ')}
         role="status"
         aria-live="polite"

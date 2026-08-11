@@ -1,6 +1,6 @@
 /**
- * Hero — typographic only.
- * Headline (≤ 7 words), eyebrow line, sub-paragraph, two CTAs.
+ * Hero — typographic with key product stats.
+ * Headline (≤ 7 words), eyebrow line, sub-paragraph, two CTAs, trust strip.
  * Roman type throughout (gate 38a). No invented metrics.
  */
 export function Hero() {
@@ -39,10 +39,10 @@ export function Hero() {
         {/* CTAs */}
         <div className="flex flex-wrap items-center gap-4">
           <a
-            href="#start"
+            href="/signup"
             className="inline-flex items-center justify-center gap-2 h-14 px-7 bg-pink-accent border-2 border-black rounded-lg text-label font-semibold text-black shadow-hard hover-lift focus-hard"
           >
-            Start voting
+            Start voting — it&apos;s free
             <span aria-hidden>→</span>
           </a>
           <a
@@ -51,6 +51,38 @@ export function Hero() {
           >
             See a sample report
           </a>
+        </div>
+
+        {/* Key stats — verifiable product highlights */}
+        <div className="flex flex-wrap gap-6 pt-2">
+          <div className="flex items-center gap-2">
+            <span className="flex items-center justify-center w-10 h-10 rounded-lg border-2 border-black bg-yellow">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10"/>
+              </svg>
+            </span>
+            <span className="text-label text-foreground">Hand-verified claims</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center justify-center w-10 h-10 rounded-lg border-2 border-black bg-pink-accent">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 17l10 5 10-5M2 12l10 5 10-5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+            <span className="text-label text-foreground">AI scam forecasts daily</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center justify-center w-10 h-10 rounded-lg border-2 border-black bg-orange">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+            <span className="text-label text-foreground">Points &amp; leaderboards</span>
+          </div>
         </div>
 
         {/* trust strip — no invented metrics, just the verifiable hooks */}

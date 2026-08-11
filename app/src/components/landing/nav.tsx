@@ -42,16 +42,22 @@ export function Nav() {
             How it works
           </a>
           <a
-            href="#blind-spot"
-            className="text-label text-foreground hover:underline underline-offset-4"
-          >
-            Blind spot
-          </a>
-          <a
             href="#forecast"
             className="text-label text-foreground hover:underline underline-offset-4"
           >
-            Forecast
+            Scam Forecast
+          </a>
+          <a
+            href="#blind-spot"
+            className="text-label text-foreground hover:underline underline-offset-4"
+          >
+            Weekly Report
+          </a>
+          <a
+            href="#leaderboard-preview"
+            className="text-label text-foreground hover:underline underline-offset-4"
+          >
+            Leaderboard
           </a>
         </nav>
 

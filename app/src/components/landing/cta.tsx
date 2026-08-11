@@ -23,7 +23,7 @@ export function CTA() {
 
           <div className="md:col-span-4 flex md:justify-end">
             <a
-              href="#sign-in"
+              href="/signup"
               className="inline-flex items-center justify-center gap-2 h-14 px-8 bg-dark-panel border-2 border-black rounded-lg text-label font-semibold text-white shadow-hard hover-lift focus-hard"
             >
               Sign in with Google
