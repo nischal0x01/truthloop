@@ -206,6 +206,18 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               to="/profile"
               className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
             >
+              Leaderboard
+            </Link>
+            <Link
+              to="/profile"
+              className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
+            >
+              Forecast
+            </Link>
+            <Link
+              to="/profile"
+              className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
+            >
               Profile
             </Link>
             {user && (

@@ -24,10 +24,10 @@
   --color-yellow: #f1f333;
   --color-red: #dc341e;
   --color-orange: #ffc900;
-  /* Real = green (new), Fake = pink-accent */
+  /* Real = green (new), Fake = red */
   --color-real: #22c55e;
   --color-real-light: #86efac;
-  --color-fake: #ff90e8;
+  --color-fake: #dc341e;
   --color-fake-light: #fda4af;
 
   /* Spacing */
