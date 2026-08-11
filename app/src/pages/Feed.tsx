@@ -24,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
-import { Flame, LogOut, Sparkles, TrendingUp } from 'lucide-react';
+import { Flame, LogOut, Sparkles, TrendingUp, User as UserIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
@@ -60,8 +60,15 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategory, setSelectedCategory] = useState<ClaimCategory | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
+
+  const handleSignOut = async () => {
+    setMenuOpen(false);
+    await signOut();
+    navigate('/', { replace: true });
+  };
 
   // Strip the ?welcome=true once we've shown it.
   useEffect(() => {
@@ -240,23 +247,66 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 >
                   {user.points ?? 0} pts
                 </motion.span>
-                <UserAvatar
-                  src={user.avatarUrl}
-                  name={user.displayName}
-                  size={36}
-                  className="border-2 border-black"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    void signOut().then(() => navigate('/'));
-                  }}
-                  aria-label="Sign out"
-                  className="border-2 border-black rounded-lg hover-lift"
-                >
-                  <LogOut size={14} aria-hidden="true" />
-                </Button>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen((v) => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    aria-label={`Account menu for ${user.displayName}`}
+                    className="rounded-full hover-lift"
+                  >
+                    <UserAvatar
+                      src={user.avatarUrl}
+                      name={user.displayName}
+                      size={36}
+                      className="border-2 border-black"
+                    />
+                  </button>
+
+                  {menuOpen && (
+                    <>
+                      {/* Click-away catcher */}
+                      <button
+                        type="button"
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        onClick={() => setMenuOpen(false)}
+                        className="fixed inset-0 z-40 cursor-default"
+                      />
+                      <div
+                        role="menu"
+                        className="absolute right-0 mt-2 w-56 origin-top-right border-2 border-black rounded-lg bg-card text-card-foreground shadow-hard z-50 overflow-hidden"
+                      >
+                        <div className="px-4 py-3 border-b-2 border-black">
+                          <p className="text-label-small font-medium leading-tight">
+                            {user.displayName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                        </div>
+                        <Link
+                          to="/profile"
+                          role="menuitem"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 text-label-small hover:bg-muted"
+                        >
+                          <UserIcon size={14} aria-hidden="true" />
+                          Profile
+                        </Link>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={handleSignOut}
+                          className="w-full flex items-center gap-2 px-4 py-2 text-label-small hover:bg-muted text-left border-t-2 border-black"
+                        >
+                          <LogOut size={14} aria-hidden="true" />
+                          Sign out
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </>
             )}
           </div>
