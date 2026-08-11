@@ -30,7 +30,7 @@ import { CommentComposer } from '@/components/feed/CommentComposer';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import {
-  dummyDiscussionsApi as discussionsApi,
+  discussionsApi,
   discussionKeys,
   type DiscussionPost,
   type DiscussionComment,
@@ -105,8 +105,8 @@ export function Discussions() {
 
   // Vote on comment mutation
   const voteCommentMutation = useMutation({
-    mutationFn: ({ commentId, vote }: { commentId: string; vote: DiscussionVoteValue; discussionId: string }) =>
-      discussionsApi.voteComment(commentId, vote),
+    mutationFn: ({ commentId, vote, discussionId }: { commentId: string; vote: DiscussionVoteValue; discussionId: string }) =>
+      discussionsApi.voteComment(commentId, vote, discussionId),
     onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
     },
