@@ -33,13 +33,12 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import {
-  AlertTriangle,
   Check,
   ExternalLink,
   MessageCircle,
   Sparkles,
-  Trophy,
   X,
 } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
@@ -123,13 +122,20 @@ export function ClaimCard({
     >
       {/* ── "YOUR TURN" badge (featured only) ── */}
       {featured && !locked && (
-        <div
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
           className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border-2 border-black bg-accent px-2 py-1 text-label-small font-bold uppercase tracking-wider text-accent-foreground shadow-hard-sm"
           aria-label="Your next claim to vote on"
         >
-          <Sparkles size={11} strokeWidth={2.5} aria-hidden="true" />
+          <motion.div
+            animate={{ rotate: [0, 10, -10, 0] }}
+            transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+          >
+            <Sparkles size={11} strokeWidth={2.5} aria-hidden="true" />
+          </motion.div>
           <span>Your turn</span>
-        </div>
+        </motion.div>
       )}
 
       {/* ── Header: category tile + meta ── */}
@@ -197,18 +203,22 @@ function CompactVerdict({
   userGuess: NonNullable<ClaimCardProps['userGuess']>;
 }) {
   const isCorrect = userGuess.correct;
-  const VerdictGlyph = isCorrect ? Trophy : AlertTriangle;
+  const isReal = claim.verdict === 'real';
   return (
     <div
       className={[
         'flex items-center gap-2 rounded-md border-2 border-black px-3 py-2 text-label font-semibold',
-        isCorrect
-          ? 'bg-highlight text-highlight-foreground'
-          : 'bg-danger text-danger-foreground',
+        isReal
+          ? 'bg-real text-white'
+          : 'bg-fake text-white',
       ].join(' ')}
       role="status"
     >
-      <VerdictGlyph size={14} strokeWidth={2.5} aria-hidden="true" />
+      {isReal ? (
+        <Check size={14} strokeWidth={3} aria-hidden="true" />
+      ) : (
+        <X size={14} strokeWidth={3} aria-hidden="true" />
+      )}
       <span>
         You said <strong className="uppercase">{userGuess.answer}</strong> —{' '}
         {isCorrect ? 'correct' : `it was ${claim.verdict}`}
@@ -230,23 +240,25 @@ function VerdictReveal({
   userGuess: NonNullable<ClaimCardProps['userGuess']>;
 }) {
   const isCorrect = userGuess.correct;
+  const isReal = claim.verdict === 'real';
   return (
     <div className="space-y-4">
-      {/* Full-width verdict band. The headline is the most prominent thing on
-          the card — this is the moment of truth. */}
+      {/* Full-width verdict band. Green for Real, Pink for Fake. */}
       <div
         className={[
           'rounded-md border-2 border-black px-5 py-4 text-center',
-          isCorrect ? 'bg-highlight text-highlight-foreground' : 'bg-danger text-danger-foreground',
+          isReal
+            ? 'bg-real text-white'
+            : 'bg-fake text-white',
         ].join(' ')}
         role="status"
         aria-live="polite"
       >
         <div className="flex items-center justify-center gap-2">
-          {isCorrect ? (
-            <Trophy size={20} strokeWidth={2.5} aria-hidden="true" />
+          {isReal ? (
+            <Check size={20} strokeWidth={3} aria-hidden="true" />
           ) : (
-            <AlertTriangle size={20} strokeWidth={2.5} aria-hidden="true" />
+            <X size={20} strokeWidth={3} aria-hidden="true" />
           )}
           <p className="text-heading-3 font-semibold tracking-display">
             {isCorrect ? (
@@ -270,13 +282,13 @@ function VerdictReveal({
         <div className="mb-2 flex items-center gap-2">
           <span
             className={[
-              'inline-flex items-center gap-1 rounded-md border-2 border-black px-2 py-0.5 text-label-small font-bold uppercase tracking-wider',
-              claim.verdict === 'real'
-                ? 'bg-card text-foreground'
-                : 'bg-danger text-danger-foreground',
+              'inline-flex items-center gap-1 rounded-md border-2 border-black px-3 py-1 text-label-small font-bold uppercase tracking-wider',
+              isReal
+                ? 'bg-real-light text-real-dark border-real'
+                : 'bg-fake-light text-fake-dark border-fake',
             ].join(' ')}
           >
-            {claim.verdict === 'real' ? (
+            {isReal ? (
               <>
                 <Check size={11} strokeWidth={3} aria-hidden="true" /> Real
               </>

@@ -84,7 +84,7 @@ export function CommentComposer({
             type="button"
             onClick={() => void submit()}
             disabled={!canSubmit}
-            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-black bg-accent px-3 py-1.5 text-label-small font-semibold text-accent-foreground transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-black bg-accent px-3 py-1.5 text-label-small font-semibold text-accent-foreground shadow-hard-sm transition-all hover:-translate-y-0.5 hover:shadow-hard active:translate-y-0 active:shadow-hard-sm disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
           >
             {submitting ? (
               <Loader2 size={13} className="animate-spin" aria-hidden="true" />

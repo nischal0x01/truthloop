@@ -13,10 +13,9 @@
 @theme {
   /* Colors */
   --color-black: #000000;
-  /* Surface was off-white (#f4f4f0); changed to white per product feedback
-     so the body matches card surfaces and depth comes purely from the
-     signature 2px black border + offset-shadow language. */
-  --color-off-white-surface: #ffffff;
+  /* Surface — off-white per Gumroad design spec (#f4f4f0)
+     Card surfaces are white for contrast against the background. */
+  --color-off-white-surface: #f4f4f0;
   --color-dark-panel: #242423;
   --color-white: #ffffff;
   --color-true-black: #000000;
@@ -25,6 +24,11 @@
   --color-yellow: #f1f333;
   --color-red: #dc341e;
   --color-orange: #ffc900;
+  /* Real = green (new), Fake = pink-accent */
+  --color-real: #22c55e;
+  --color-real-light: #86efac;
+  --color-fake: #ff90e8;
+  --color-fake-light: #fda4af;
 
   /* Spacing */
   --spacing-space-1: 4px;
@@ -153,8 +157,8 @@
 :root {
   --radius: 1rem; /* base radius used by shadcn's calc() fallbacks */
 
-  /* Surfaces */
-  --background: var(--color-off-white-surface);
+  /* Surfaces — background is off-white, cards are pure white for depth */
+  --background: #f4f4f0;
   --foreground: var(--color-black);
   --card: var(--color-white);
   --card-foreground: var(--color-black);
@@ -291,12 +295,30 @@
   .bg-orange {
     background-color: var(--color-orange);
   }
+  .bg-real {
+    background-color: var(--color-real);
+  }
+  .bg-real-light {
+    background-color: var(--color-real-light);
+  }
+  .bg-fake {
+    background-color: var(--color-fake);
+  }
+  .bg-fake-light {
+    background-color: var(--color-fake-light);
+  }
 
   .text-muted-text {
     color: var(--color-muted-text);
   }
   .text-pink-accent {
     color: var(--color-pink-accent);
+  }
+  .text-real {
+    color: var(--color-real);
+  }
+  .text-fake {
+    color: var(--color-fake);
   }
 
   .border-black {

@@ -23,11 +23,10 @@ import {
   MessagesSquare,
   X,
   Check,
-  AlertTriangle,
-  Trophy,
 } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
 import { VoteButtons } from './VoteButtons';
+import { VoteSlider } from './VoteSlider';
 import { CommentThread } from './CommentThread';
 import { CommentComposer } from './CommentComposer';
 import {
@@ -280,21 +279,26 @@ export function ClaimDetailPanel({
 
 function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGuess }) {
   const correct = userGuess?.correct;
+  const isReal = claim.verdict === 'real';
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Verdict header — green for Real, pink for Fake */}
       <div
         className={[
           'rounded-lg border-2 border-black px-4 py-4 text-center shadow-hard-sm',
-          correct ? 'bg-highlight text-highlight-foreground' : 'bg-danger text-danger-foreground',
+          isReal
+            ? 'bg-real text-white'
+            : 'bg-fake text-white',
         ].join(' ')}
         role="status"
         aria-live="polite"
       >
         <div className="flex items-center justify-center gap-2">
-          {correct ? (
-            <Trophy size={18} strokeWidth={2.5} aria-hidden="true" />
+          {isReal ? (
+            <Check size={22} strokeWidth={3} aria-hidden="true" />
           ) : (
-            <AlertTriangle size={18} strokeWidth={2.5} aria-hidden="true" />
+            <X size={22} strokeWidth={3} aria-hidden="true" />
           )}
           <p className="text-heading-3 font-semibold tracking-display">
             {correct ? (
@@ -313,17 +317,18 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
         </p>
       </div>
 
+      {/* Verdict pill + explanation */}
       <div className="rounded-lg border-2 border-black bg-card p-4">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span
             className={[
-              'inline-flex items-center gap-1 rounded-md border-2 border-black px-2 py-0.5 text-label-small font-bold uppercase tracking-wider',
-              claim.verdict === 'real'
-                ? 'bg-background text-foreground'
-                : 'bg-danger text-danger-foreground',
+              'inline-flex items-center gap-1 rounded-md border-2 border-black px-3 py-1 text-label-small font-bold uppercase tracking-wider',
+              isReal
+                ? 'bg-real-light text-real-dark border-real'
+                : 'bg-fake-light text-fake-dark border-fake',
             ].join(' ')}
           >
-            {claim.verdict === 'real' ? (
+            {isReal ? (
               <>
                 <Check size={11} aria-hidden="true" /> Real
               </>
@@ -352,6 +357,17 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
           </a>
         )}
       </div>
+
+      {/* Community vote distribution slider */}
+      {(claim.realCount != null || claim.fakeCount != null) && (
+        <div className="rounded-lg border-2 border-black bg-card p-4">
+          <VoteSlider
+            realCount={claim.realCount ?? 0}
+            fakeCount={claim.fakeCount ?? 0}
+            userVote={userGuess?.answer}
+          />
+        </div>
+      )}
     </div>
   );
 }
