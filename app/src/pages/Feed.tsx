@@ -21,15 +21,14 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { Flame, Sparkles, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
   ClaimDetailPanel,
-  ClaimDetailEmpty,
   ClaimDetailDrawer,
 } from '@/components/feed/ClaimDetailPanel';
 import { Button } from '@/components/ui/button';
@@ -386,33 +385,10 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
             </div>
           )}
         </div>
-
-        {/* ── Docked panel (desktop only) ── */}
-        <AnimatePresence initial={false}>
-          {isPanelOpen && (
-            <motion.aside
-              key="docked-panel"
-              className="hidden min-h-0 shrink-0 border-l-2 border-black lg:block lg:w-[clamp(400px,38vw,620px)]"
-              initial={{ x: 40, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 40, opacity: 0 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            >
-              {panelContent}
-            </motion.aside>
-          )}
-        </AnimatePresence>
-
-        {/* Idle hint in the dock area when nothing is selected (desktop, wide) */}
-        {!isPanelOpen && claims.length > 0 && (
-          <aside className="hidden min-h-0 w-[clamp(400px,32vw,520px)] shrink-0 border-l-2 border-black xl:block">
-            <ClaimDetailEmpty />
-          </aside>
-        )}
       </div>
 
-      {/* ── Mobile drawer ── */}
-      <ClaimDetailDrawer open={isPanelOpen} onClose={closePanel}>
+      {/* ── Claim Detail Drawer/Modal (covers most of screen) ── */}
+      <ClaimDetailDrawer open={isPanelOpen} onClose={closePanel} fullScreen>
         {panelContent}
       </ClaimDetailDrawer>
     </div>

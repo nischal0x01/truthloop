@@ -13,10 +13,10 @@
  * unvoted claim shows the vote buttons and a "vote to unlock" notice instead.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check } from 'lucide-react';
+import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check, ArrowUp, ArrowDown, MessagesCircle } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
 import { VoteButtons } from './VoteButtons';
 import { VoteSlider } from './VoteSlider';
@@ -57,6 +57,7 @@ export function ClaimDetailPanel({
   canInteract,
 }: ClaimDetailPanelProps) {
   const qc = useQueryClient();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const hasVoted = !!userGuess;
   const key = commentKeys.forClaim(claim.id);
 
@@ -152,11 +153,11 @@ export function ClaimDetailPanel({
 
   return (
     <section
-      className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden bg-background"
+      className="flex flex-col h-full bg-background relative"
       aria-label="Claim detail and discussion"
     >
       {/* ── Header ── */}
-      <header className="border-b-2 border-black bg-card px-5 py-3.5">
+      <header className="border-b-2 border-black bg-card px-5 py-4 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <CategoryPill category={claim.category} />
@@ -172,7 +173,7 @@ export function ClaimDetailPanel({
             type="button"
             onClick={onClose}
             aria-label="Close detail panel"
-            className="grid size-8 shrink-0 place-items-center rounded-lg border-2 border-black bg-background transition-transform hover:-translate-y-px"
+            className="grid size-8 shrink-0 place-items-center rounded-lg border-2 border-black bg-background transition-transform hover:-translate-y-px hover-lift"
           >
             <X size={15} strokeWidth={2.5} aria-hidden="true" />
           </button>
@@ -187,7 +188,7 @@ export function ClaimDetailPanel({
       </header>
 
       {/* ── Scrollable body ── */}
-      <div className="min-h-0 overflow-y-auto px-5 py-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
         {/* Vote distribution stats */}
         <div className="mb-4 rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
           <div className="mb-2 flex items-center justify-between text-label-small font-semibold">
@@ -270,10 +271,15 @@ export function ClaimDetailPanel({
             )}
           </div>
         )}
+
+        {/* Scroll navigation */}
+        {hasVoted && total > 3 && (
+          <ScrollNavigator scrollRef={scrollRef} />
+        )}
       </div>
 
       {/* ── Sticky composer ── */}
-      <footer className="border-t-2 border-black bg-card px-5 py-3">
+      <footer className="border-t-2 border-black bg-card px-5 py-3 shrink-0">
         {!canInteract ? (
           <p className="text-center text-label-small text-muted-foreground">
             Sign in to join the discussion.
@@ -390,6 +396,42 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
   );
 }
 
+/* ── Scroll navigator ── */
+
+function ScrollNavigator({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
+  const scrollToTop = () => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollToBottom = () => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
+  };
+
+  return (
+    <div className="fixed right-6 bottom-24 flex flex-col gap-2 z-10">
+      <button
+        type="button"
+        onClick={scrollToTop}
+        aria-label="Scroll to top"
+        className="grid size-10 place-items-center rounded-lg border-2 border-black bg-card shadow-hard-sm transition-transform hover:-translate-y-0.5 hover-lift"
+      >
+        <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        onClick={scrollToBottom}
+        aria-label="Scroll to bottom"
+        className="grid size-10 place-items-center rounded-lg border-2 border-black bg-card shadow-hard-sm transition-transform hover:-translate-y-0.5 hover-lift"
+      >
+        <ArrowDown size={16} strokeWidth={2.5} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 /* ── Empty state: shown in the docked pane when nothing is selected ── */
 
 export function ClaimDetailEmpty() {
@@ -408,17 +450,65 @@ export function ClaimDetailEmpty() {
   );
 }
 
-/* ── Mobile drawer wrapper ── */
+/* ── Mobile drawer / Fullscreen modal wrapper ── */
 
 export function ClaimDetailDrawer({
   open,
   onClose,
   children,
+  fullScreen = false,
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  /** When true, covers most of the screen on all devices */
+  fullScreen?: boolean;
 }) {
+  if (fullScreen) {
+    return (
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Dark overlay with blur */}
+            <motion.div
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              onClick={onClose}
+              aria-hidden="true"
+            />
+            {/* Centered modal with proper scrolling */}
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center p-6"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Claim discussion"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <motion.div
+                className="w-full max-w-2xl max-h-[85vh] rounded-2xl border-2 border-black bg-card shadow-hard-lg flex flex-col overflow-hidden"
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 250 }}
+              >
+                <div className="flex-1 overflow-y-auto">
+                  {children}
+                </div>
+              </motion.div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  // Mobile-only bottom sheet (original behavior)
   return (
     <AnimatePresence>
       {open && (
