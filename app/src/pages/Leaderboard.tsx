@@ -5,9 +5,9 @@
 
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Trophy, Medal, TrendingUp, Flame, ArrowLeft } from 'lucide-react';
+import { Trophy, Medal, TrendingUp, Flame } from 'lucide-react';
 import { UserAvatar } from '@/components/auth/UserAvatar';
-import { Button } from '@/components/ui/button';
+import { AppNav } from '@/components/AppNav';
 import { useAuth } from '@/contexts/auth-context';
 
 /* ── Dummy data ── */
@@ -133,19 +133,8 @@ export function Leaderboard() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b-2 border-black bg-background">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-4">
-          <Button variant="ghost" size="sm" asChild className="border-2 border-black rounded-lg hover-lift">
-            <Link to="/" className="flex items-center gap-2">
-              <ArrowLeft size={16} />
-              Claims
-            </Link>
-          </Button>
-          <h1 className="font-display text-heading-2 font-semibold">Leaderboard</h1>
-          <div className="w-28" />
-        </div>
-      </header>
+      {/* Shared App Nav */}
+      <AppNav showClaims={true} />
 
       <main className="mx-auto max-w-3xl px-6 py-8 space-y-10">
         {/* Daily leaderboard */}
