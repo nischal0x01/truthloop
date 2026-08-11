@@ -20,7 +20,7 @@
  *   - Avoids the redirect chain (auth → /feed → /) that caused the nav flicker.
  */
 
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Nav } from '@/components/landing/nav';
 import { Hero } from '@/components/landing/hero';
@@ -28,6 +28,7 @@ import { WhyTruthLoop } from '@/components/landing/why-truthloop';
 import { LoopSteps } from '@/components/landing/loop-steps';
 import { BlindSpot } from '@/components/landing/blind-spot';
 import { Forecast } from '@/components/landing/forecast';
+import { LeaderboardPreview } from '@/components/landing/leaderboard-preview';
 import { CTA } from '@/components/landing/cta';
 import { Footer } from '@/components/landing/footer';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -49,6 +50,7 @@ const Landing = () => (
       <LoopSteps />
       <BlindSpot />
       <Forecast />
+      <LeaderboardPreview />
       <CTA />
     </main>
     <Footer />
@@ -60,6 +62,7 @@ const Landing = () => (
 function RootRoute({ claimId }: { claimId?: string }) {
   const { status } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // While we don't yet know who's signed in, render a tiny neutral loader
   // so the user never sees the marketing landing flash in for a second
@@ -77,6 +80,13 @@ function RootRoute({ claimId }: { claimId?: string }) {
   }
 
   if (status === 'authenticated') {
+    // Check for post-OAuth redirect destination (set by ProtectedRoute before redirecting to signin)
+    const redirectTo = sessionStorage.getItem('authRedirectTo');
+    if (redirectTo) {
+      sessionStorage.removeItem('authRedirectTo');
+      navigate(redirectTo, { replace: true });
+      return null;
+    }
     // Preserve search params (e.g. ?welcome=true from OAuth callback)
     return <Feed initialSearch={location.search} selectedClaimId={claimId} />;
   }

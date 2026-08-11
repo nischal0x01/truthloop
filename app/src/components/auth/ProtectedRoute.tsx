@@ -34,7 +34,9 @@ export function ProtectedRoute() {
   }
 
   if (status === 'unauthenticated') {
-    return <Navigate to="/signin" replace state={{ from: location.pathname }} />;
+    // Store the destination so we can redirect back after OAuth completes
+    sessionStorage.setItem('authRedirectTo', location.pathname);
+    return <Navigate to="/signin" replace />;
   }
 
   return <Outlet />;
