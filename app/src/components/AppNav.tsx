@@ -42,9 +42,9 @@ export function AppNav({ showClaims = true }: AppNavProps) {
         <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
           {showClaims && (
             <Link
-              to="/"
+              to="/claims"
               className={`text-label hover:underline underline-offset-4 ${
-                location.pathname === '/' ? 'font-semibold' : 'font-normal'
+                location.pathname === '/claims' || location.pathname.startsWith('/claims/') ? 'font-semibold' : 'font-normal'
               }`}
             >
               Claims

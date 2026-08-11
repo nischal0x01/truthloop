@@ -10,8 +10,10 @@ interface CategoryPillProps {
   className?: string;
 }
 
+const FALLBACK_META = { label: 'Claim', icon: '📋', bg: 'bg-muted', ink: 'text-foreground' };
+
 export function CategoryPill({ category, className = '' }: CategoryPillProps) {
-  const meta = CATEGORY_META[category];
+  const meta = CATEGORY_META[category] ?? FALLBACK_META;
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2.5 py-1 text-label-small font-medium ${meta.bg} ${meta.ink} ${className}`}
