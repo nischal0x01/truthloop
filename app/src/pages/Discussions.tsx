@@ -489,24 +489,6 @@ function PostDetail({
         </div>
       </article>
 
-      {/* Comment composer */}
-      <div className="mt-5">
-        {canInteract ? (
-          <CommentComposer
-            autoFocus={false}
-            placeholder="Share your thoughts…"
-            submitLabel="Post"
-            onSubmit={async (body) => {
-              await onReply(null, body);
-            }}
-          />
-        ) : (
-          <p className="text-center text-label-small text-muted-foreground">
-            Sign in to join the discussion.
-          </p>
-        )}
-      </div>
-
       {/* Comment thread */}
       {tree.length > 0 && (
         <div className="mt-6">
@@ -523,6 +505,24 @@ function PostDetail({
           />
         </div>
       )}
+
+      {/* Comment composer — at bottom, Reddit-style */}
+      <div className="mt-5">
+        {canInteract ? (
+          <CommentComposer
+            autoFocus={false}
+            placeholder="Share your thoughts…"
+            submitLabel="Post"
+            onSubmit={async (body) => {
+              await onReply(null, body);
+            }}
+          />
+        ) : (
+          <p className="text-center text-label-small text-muted-foreground">
+            Sign in to join the discussion.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
