@@ -1,0 +1,10 @@
+{
+  "schema": "./src/db/schema",
+  "out": "./drizzle",
+  "dialect": "postgresql",
+  "dbCredentials": {
+    "url": "postgresql://nischal0x01:nischal0x01@localhost:5432/youth"
+  },
+  "tablesFilter": ["youth_*"],
+  "strict": true
+}

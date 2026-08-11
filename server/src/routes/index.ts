@@ -4,6 +4,7 @@ import claimsRouter from './claims';
 import commentsRouter from './comments';
 import authRouter from './auth';
 import usersRouter from './users';
+import adminRouter from './admin';
 
 const router = Router();
 
@@ -12,5 +13,6 @@ router.use('/claims', claimsRouter);
 router.use('/comments', commentsRouter);
 router.use('/auth', authRouter);
 router.use('/users', usersRouter);
+router.use('/admin', adminRouter);
 
 export default router;

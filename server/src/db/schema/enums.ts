@@ -38,3 +38,19 @@ export const forecastStatusEnum = pgEnum('forecast_status', [
   'fallback',
   'failed',
 ]);
+
+/** Composite decision from the 3-filter AI pipeline. */
+export const discoveryDecisionEnum = pgEnum('discovery_decision', [
+  'publish_as_scam',     // fake + feels like scam + confirmed scam
+  'publish_as_misinfo',  // fake but not confirmed scam
+  'flag_review',         // uncertain — needs human review
+  'reject',              // real or verified true — not relevant
+]);
+
+/** Status of an AI scrape run. */
+export const scrapeRunStatusEnum = pgEnum('scrape_run_status', [
+  'running',
+  'success',
+  'partial',   // some sources failed
+  'failed',
+]);

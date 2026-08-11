@@ -15,6 +15,7 @@ import { morganMiddleware } from '@/middleware/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/errorHandler';
 import { connectDb } from '@/utils/db';
 import routes from '@/routes';
+import { startClaimDiscoveryCron, runClaimDiscovery } from '@/jobs/claimDiscovery.js';
 
 const app = express();
 const PORT = config.port;
@@ -104,6 +105,14 @@ app.listen(PORT, async () => {
   // Eagerly verify the DB pool can reach Postgres — log on boot instead of
   // waiting for the first request to surface a connection error.
   await connectDb();
+
+  // Start the AI claim discovery cron job (every 2 hours)
+  startClaimDiscoveryCron();
+
+  // Run once immediately on boot, then continue with the cron schedule
+  runClaimDiscovery().catch((err) => {
+    logger.error(`[boot] Initial claim discovery run failed: ${err}`);
+  });
 });
 
 // Graceful shutdown

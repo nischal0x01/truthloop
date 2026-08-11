@@ -30,3 +30,4 @@ export * from './forecasts';
 export * from './gamification';
 export * from './notifications';
 export * from './reports';
+export * from './ai-discovery';

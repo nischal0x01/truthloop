@@ -93,7 +93,7 @@ router.get('/:id', async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────
 router.post('/:id/guess', requireAuth, async (req, res) => {
   const userId = (req.user as { id: string }).id;
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { user_answer } = req.body as { user_answer?: 'real' | 'fake' };
 
   if (!user_answer) {
