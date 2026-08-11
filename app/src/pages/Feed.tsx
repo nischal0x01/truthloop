@@ -210,9 +210,15 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
             </Link>
             {user && (
               <>
-                <span className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-highlight px-2.5 py-1 text-label-small font-semibold text-highlight-foreground sm:inline-flex">
+                <motion.span
+                  key={user.points}
+                  initial={{ scale: 1.2, opacity: 0.7 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', damping: 10, stiffness: 200 }}
+                  className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-highlight px-2.5 py-1 text-label-small font-semibold text-highlight-foreground sm:inline-flex"
+                >
                   {user.points ?? 0} pts
-                </span>
+                </motion.span>
                 <UserAvatar
                   src={user.avatarUrl}
                   name={user.displayName}

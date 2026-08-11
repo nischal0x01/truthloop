@@ -39,6 +39,9 @@ export interface Claim {
   publishedAt: string | null;
   trendingScore: number;
   voteCount: number;
+  /** Community vote breakdown — realCount + fakeCount = voteCount */
+  realCount?: number;
+  fakeCount?: number;
   createdAt: string;
 }
 
