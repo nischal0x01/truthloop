@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check, ArrowUp, ArrowDown, MessagesCircle } from 'lucide-react';
+import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check, ArrowUp, ArrowDown, MessageCircle } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
 import { VoteButtons } from './VoteButtons';
 import { VoteSlider } from './VoteSlider';
@@ -471,7 +471,7 @@ export function ClaimDetailDrawer({
           <>
             {/* Dark overlay with blur */}
             <motion.div
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+              className="fixed inset-0 z-40 bg-black/30 backdrop-blur-xl backdrop-brightness-75"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -489,6 +489,7 @@ export function ClaimDetailDrawer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
+              onClick={onClose}
             >
               <motion.div
                 className="w-full max-w-2xl max-h-[85vh] rounded-2xl border-2 border-black bg-card shadow-hard-lg flex flex-col overflow-hidden"
@@ -496,6 +497,7 @@ export function ClaimDetailDrawer({
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
                 transition={{ type: 'spring', damping: 20, stiffness: 250 }}
+                onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex-1 overflow-y-auto">
                   {children}
