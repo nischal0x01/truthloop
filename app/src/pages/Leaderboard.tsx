@@ -3,7 +3,6 @@
  * Uses the Gumroad design system tokens and patterns.
  */
 
-import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Trophy, Medal, TrendingUp, Flame } from 'lucide-react';
 import { UserAvatar } from '@/components/auth/UserAvatar';
