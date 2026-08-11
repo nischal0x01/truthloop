@@ -17,7 +17,6 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  LogOut,
   Flame,
   Trophy,
   Target,
@@ -33,6 +32,7 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/auth/UserAvatar';
+import { AppNav } from '@/components/AppNav';
 import {
   profileApi,
   profileKeys,
@@ -274,7 +274,7 @@ function WeeklyReportPanel({ report }: { report: WeeklyReportPreview | null }) {
 /* ── Page ── */
 
 export function Profile() {
-  const { user, status, signOut } = useAuth();
+  const { user, status } = useAuth();
   const navigate = useNavigate();
 
   // Defence in depth — ProtectedRoute already handles this.
@@ -298,39 +298,8 @@ export function Profile() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* ── Top bar ── */}
-      <header className="sticky top-0 z-30 bg-background border-b-2 border-black">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-label font-semibold tracking-[-0.02em]"
-          >
-            <ShieldCheck size={20} strokeWidth={2.2} aria-hidden="true" />
-            <span>TruthLoop</span>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="hidden text-label text-foreground hover:underline underline-offset-4 sm:inline"
-            >
-              Feed
-            </Link>
-            <Button
-              variant="outline"
-              size="default"
-              onClick={() => {
-                void signOut().then(() => navigate('/'));
-              }}
-              aria-label="Sign out"
-              className="border-2 border-black rounded-lg hover-lift"
-            >
-              <LogOut size={14} aria-hidden="true" />
-              <span className="hidden sm:inline">Sign out</span>
-            </Button>
-          </div>
-        </div>
-      </header>
+      {/* ── Shared App Nav ── */}
+      <AppNav showClaims={true} />
 
       {/* ── Body ── */}
       <main className="mx-auto max-w-5xl px-6 py-10">

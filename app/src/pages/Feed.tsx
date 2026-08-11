@@ -24,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
-import { Flame, LogOut, Sparkles, TrendingUp, User as UserIcon } from 'lucide-react';
+import { Flame, Sparkles, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
@@ -33,7 +33,7 @@ import {
   ClaimDetailDrawer,
 } from '@/components/feed/ClaimDetailPanel';
 import { Button } from '@/components/ui/button';
-import { UserAvatar } from '@/components/auth/UserAvatar';
+import { AppNav } from '@/components/AppNav';
 import {
   claimKeys,
   claimsApi,
@@ -56,19 +56,12 @@ interface FeedProps {
 }
 
 export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategory, setSelectedCategory] = useState<ClaimCategory | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
-
-  const handleSignOut = async () => {
-    setMenuOpen(false);
-    await signOut();
-    navigate('/', { replace: true });
-  };
 
   // Strip the ?welcome=true once we've shown it.
   useEffect(() => {
@@ -206,112 +199,8 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      {/* ── Top bar ── */}
-      <header className="z-30 shrink-0 border-b-2 border-black bg-background">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-6 py-4">
-          {/* Logo */}
-          <Link
-            to="/"
-            className="font-sans text-label font-semibold tracking-[-0.02em]"
-            aria-label="TruthLoop — home"
-          >
-            TruthLoop
-          </Link>
-
-          {/* Center nav links */}
-          <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
-            <Link
-              to="/"
-              className="text-label text-foreground hover:underline underline-offset-4"
-            >
-              Claims
-            </Link>
-            <Link
-              to="/leaderboard"
-              className="text-label text-foreground hover:underline underline-offset-4"
-            >
-              Leaderboard
-            </Link>
-          </nav>
-
-          {/* Right side */}
-          <div className="flex items-center gap-3">
-            {user && (
-              <>
-                <motion.span
-                  key={user.points}
-                  initial={{ scale: 1.2, opacity: 0.7 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: 'spring', damping: 10, stiffness: 200 }}
-                  className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-yellow px-2.5 py-1 text-label-small font-semibold sm:inline-flex"
-                >
-                  {user.points ?? 0} pts
-                </motion.span>
-
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setMenuOpen((v) => !v)}
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    aria-label={`Account menu for ${user.displayName}`}
-                    className="rounded-full hover-lift"
-                  >
-                    <UserAvatar
-                      src={user.avatarUrl}
-                      name={user.displayName}
-                      size={36}
-                      className="border-2 border-black"
-                    />
-                  </button>
-
-                  {menuOpen && (
-                    <>
-                      {/* Click-away catcher */}
-                      <button
-                        type="button"
-                        aria-hidden="true"
-                        tabIndex={-1}
-                        onClick={() => setMenuOpen(false)}
-                        className="fixed inset-0 z-40 cursor-default"
-                      />
-                      <div
-                        role="menu"
-                        className="absolute right-0 mt-2 w-56 origin-top-right border-2 border-black rounded-lg bg-card text-card-foreground shadow-hard z-50 overflow-hidden"
-                      >
-                        <div className="px-4 py-3 border-b-2 border-black">
-                          <p className="text-label-small font-medium leading-tight">
-                            {user.displayName}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                        </div>
-                        <Link
-                          to="/profile"
-                          role="menuitem"
-                          onClick={() => setMenuOpen(false)}
-                          className="flex items-center gap-2 px-4 py-2 text-label-small hover:bg-muted"
-                        >
-                          <UserIcon size={14} aria-hidden="true" />
-                          Profile
-                        </Link>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={handleSignOut}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-label-small hover:bg-muted text-left border-t-2 border-black"
-                        >
-                          <LogOut size={14} aria-hidden="true" />
-                          Sign out
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      {/* ── Shared App Nav ── */}
+      <AppNav showClaims={true} />
 
       {/* ── Split pane ──
           Desktop: feed column scrolls independently, panel docked right.
