@@ -25,6 +25,7 @@ export * from './enums';
 export * from './users';
 export * from './claims';
 export * from './comments';
+export * from './discussions';
 export * from './submissions';
 export * from './forecasts';
 export * from './gamification';
