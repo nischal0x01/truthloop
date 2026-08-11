@@ -25,7 +25,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Flame, LogOut, Sparkles, TrendingUp } from 'lucide-react';
-import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
@@ -193,33 +192,39 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
       {/* ── Top bar ── */}
       <header className="z-30 shrink-0 border-b-2 border-black bg-background">
         <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-6 py-4">
+          {/* Logo */}
           <Link
             to="/"
-            className="flex items-center gap-2 text-label font-semibold tracking-display"
+            className="font-sans text-label font-semibold tracking-[-0.02em]"
+            aria-label="TruthLoop — home"
           >
-            <ShieldCheck size={20} strokeWidth={2.2} aria-hidden="true" />
-            <span>TruthLoop</span>
+            TruthLoop
           </Link>
 
-          <div className="flex items-center gap-3">
+          {/* Center nav links */}
+          <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
             <Link
-              to="/profile"
-              className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
+              to="/"
+              className="text-label text-foreground hover:underline underline-offset-4"
+            >
+              Claims
+            </Link>
+            <Link
+              to="/leaderboard"
+              className="text-label text-foreground hover:underline underline-offset-4"
             >
               Leaderboard
             </Link>
-            <Link
-              to="/profile"
-              className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
+            <a
+              href="#forecast"
+              className="text-label text-foreground hover:underline underline-offset-4"
             >
-              Forecast
-            </Link>
-            <Link
-              to="/profile"
-              className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
-            >
-              Profile
-            </Link>
+              Scam Forecast
+            </a>
+          </nav>
+
+          {/* Right side */}
+          <div className="flex items-center gap-3">
             {user && (
               <>
                 <motion.span
@@ -227,7 +232,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                   initial={{ scale: 1.2, opacity: 0.7 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ type: 'spring', damping: 10, stiffness: 200 }}
-                  className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-highlight px-2.5 py-1 text-label-small font-semibold text-highlight-foreground sm:inline-flex"
+                  className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-yellow px-2.5 py-1 text-label-small font-semibold sm:inline-flex"
                 >
                   {user.points ?? 0} pts
                 </motion.span>
@@ -238,8 +243,8 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                   className="border-2 border-black"
                 />
                 <Button
-                  variant="outline"
-                  size="default"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     void signOut().then(() => navigate('/'));
                   }}
@@ -247,7 +252,6 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                   className="border-2 border-black rounded-lg hover-lift"
                 >
                   <LogOut size={14} aria-hidden="true" />
-                  <span className="hidden sm:inline">Sign out</span>
                 </Button>
               </>
             )}

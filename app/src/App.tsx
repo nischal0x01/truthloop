@@ -36,6 +36,7 @@ import { SignIn } from '@/pages/SignIn';
 import { SignUp } from '@/pages/SignUp';
 import { Profile } from '@/pages/Profile';
 import { Feed } from '@/pages/Feed';
+import { Leaderboard } from '@/pages/Leaderboard';
 
 /* ── Landing (marketing) ── */
 
@@ -135,6 +136,7 @@ const App = () => {
           {/* Protected */}
           <Route element={<ProtectedRoute />}>
             <Route path="/profile" element={<Profile />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
           </Route>
 
           {/* Legacy aliases — keep old bookmarks alive */}

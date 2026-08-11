@@ -53,12 +53,12 @@ export function Nav() {
           >
             Weekly Report
           </a>
-          <a
-            href="#leaderboard-preview"
+          <Link
+            to="/leaderboard"
             className="text-label text-foreground hover:underline underline-offset-4"
           >
             Leaderboard
-          </a>
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3">
