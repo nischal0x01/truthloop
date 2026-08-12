@@ -43,28 +43,44 @@ export function AppNav({ showClaims = true }: AppNavProps) {
           {showClaims && (
             <Link
               to="/claims"
-              className={`text-label hover:underline underline-offset-4 ${
-                location.pathname === '/claims' || location.pathname.startsWith('/claims/') ? 'font-semibold' : 'font-normal'
-              }`}
+              className={[
+                'relative text-label font-medium transition-all',
+                location.pathname === '/claims' || location.pathname.startsWith('/claims/')
+                  ? 'text-foreground font-semibold'
+                  : 'text-foreground/70 hover:text-foreground',
+              ].join(' ')}
             >
               Claims
+              {location.pathname === '/claims' || location.pathname.startsWith('/claims/') ? (
+                <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-pink-accent" aria-hidden="true" />
+              ) : null}
             </Link>
           )}
           <Link
             to="/leaderboard"
-            className={`text-label hover:underline underline-offset-4 ${
-              location.pathname === '/leaderboard' ? 'font-semibold' : 'font-normal'
-            }`}
+            className={[
+              'relative text-label font-medium transition-all',
+              location.pathname === '/leaderboard' ? 'text-foreground font-semibold' : 'text-foreground/70 hover:text-foreground',
+            ].join(' ')}
           >
             Leaderboard
+            {location.pathname === '/leaderboard' ? (
+              <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-pink-accent" aria-hidden="true" />
+            ) : null}
           </Link>
           <Link
             to="/discussions"
-            className={`text-label hover:underline underline-offset-4 ${
-              location.pathname === '/discussions' || location.pathname.startsWith('/discussions/') ? 'font-semibold' : 'font-normal'
-            }`}
+            className={[
+              'relative text-label font-medium transition-all',
+              location.pathname === '/discussions' || location.pathname.startsWith('/discussions/')
+                ? 'text-foreground font-semibold'
+                : 'text-foreground/70 hover:text-foreground',
+            ].join(' ')}
           >
             Discussions
+            {location.pathname === '/discussions' || location.pathname.startsWith('/discussions/') ? (
+              <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-pink-accent" aria-hidden="true" />
+            ) : null}
           </Link>
         </nav>
 

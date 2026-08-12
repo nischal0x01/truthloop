@@ -12,10 +12,18 @@ import { AppError } from '@/middleware/errorHandler';
 
 const router = Router();
 
-// Configure Cloudinary from CLOUDINARY_URL env var
-cloudinary.config({
-  cloudinary_url: process.env.CLOUDINARY_URL,
-});
+// Configure Cloudinary — parse CLOUDINARY_URL into explicit credentials
+const cloudinaryUrl = process.env.CLOUDINARY_URL;
+if (cloudinaryUrl) {
+  const match = cloudinaryUrl.match(/cloudinary:\/\/([^:]+):([^@]+)@(.+)/);
+  if (match) {
+    cloudinary.config({
+      cloud_name: match[3],
+      api_key: match[1],
+      api_secret: match[2],
+    });
+  }
+}
 
 // Multer config — keep file in memory (not on disk) so we can upload as data URI
 const upload = multer({

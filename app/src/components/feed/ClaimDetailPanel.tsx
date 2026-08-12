@@ -61,6 +61,13 @@ export function ClaimDetailPanel({
   const hasVoted = !!userGuess;
   const key = commentKeys.forClaim(claim.id);
 
+  // Compute vote stats once
+  const realCount = claim.realCount ?? 0;
+  const fakeCount = claim.fakeCount ?? 0;
+  const totalVotes = realCount + fakeCount;
+  const realPct = totalVotes > 0 ? Math.round((realCount / totalVotes) * 100) : 0;
+  const fakePct = totalVotes > 0 ? Math.round((fakeCount / totalVotes) * 100) : 0;
+
   /* ── Comments ── */
   // Not fetched until the user has voted — saves a request and enforces the
   // spoiler rule at the network layer, not just visually.
@@ -227,22 +234,22 @@ export function ClaimDetailPanel({
         {/* Vote distribution stats */}
         <div className="mb-4 rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
           <div className="mb-2 flex items-center justify-between text-label-small font-semibold">
-            <span className="text-real">✓ 847 said Real</span>
+            <span className="text-real">✓ {realCount.toLocaleString()} said Real</span>
             <span className="text-muted-foreground">vs</span>
-            <span className="text-[#dc341e]">✕ 623 said Fake</span>
+            <span className="text-red">✕ {fakeCount.toLocaleString()} said Fake</span>
           </div>
           {/* Distribution bar */}
           <div className="h-3 overflow-hidden rounded-md border-2 border-black bg-red">
             <div
               className="h-full bg-real"
-              style={{ width: '57%' }}
+              style={{ width: `${realPct}%` }}
               role="img"
-              aria-label="57% voted Real, 43% voted Fake"
+              aria-label={`${realPct}% voted Real, ${fakePct}% voted Fake`}
             />
           </div>
           <div className="mt-2 flex justify-between text-label-small text-muted-foreground">
-            <span>57% Real</span>
-            <span>43% Fake</span>
+            <span>{realPct}% Real</span>
+            <span>{fakePct}% Fake</span>
           </div>
         </div>
 
