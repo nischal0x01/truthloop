@@ -324,8 +324,32 @@ export function ClaimDetailPanel({
           >
             <h3 className="mb-3 flex items-center gap-2 text-label font-semibold">
               <MessagesSquare size={15} aria-hidden="true" />
-              Discussion
-              {total > 0 && <span className="text-muted-foreground">({total})</span>}
+              <span className="relative inline-block overflow-hidden align-baseline">
+                <motion.span
+                  className="inline-block"
+                  initial={reduce ? false : { y: '110%' }}
+                  animate={{ y: '0%' }}
+                  transition={{ duration: 0.6, ease: EASE, delay: 0.35 }}
+                >
+                  Discussion
+                </motion.span>
+              </span>
+              <AnimatePresence>
+                {total > 0 && (
+                  <motion.span
+                    key={total}
+                    initial={reduce ? false : { scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={reduce ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
+                    transition={{ type: 'spring', damping: 14, stiffness: 260 }}
+                    className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-black bg-accent px-1.5 text-[10px] font-bold text-accent-foreground shadow-hard-sm tabular-nums"
+                    aria-label={`${total} comments`}
+                  >
+                    {total}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+              <span className="ml-auto h-px flex-1 bg-black/10" />
             </h3>
 
             {commentsQuery.isLoading && (

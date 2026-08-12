@@ -1,106 +1,50 @@
 /**
  * Discussions — standalone forum page (Reddit-style).
  *
- * Two views (URL-based routing):
- *   - List view: /discussions — all posts, sortable (Hot / New / Top)
- *   - Detail view: /discussions/:id — single post + nested comment thread
+ * URL-based routing:
+ *   - /discussions       — list view (sortable: Hot / New / Top)
+ *   - /discussions/:id   — detail view (single post + nested comments)
  *
- * UX improvements:
- *   - URL-based navigation (bookmarkable, browser back/forward works)
- *   - Saving a post edit → navigates back to list (main feed)
- *   - Keyboard shortcuts: Escape to cancel edit / go back
- *   - Toast notifications for save/delete actions
+ * This page owns:
+ *   - Routing + URL sync
+ *   - React Query (list, detail)
+ *   - Mutations (vote, create, update, delete on posts + comments)
+ *   - Toast notification queue
+ *   - Keyboard shortcut for Escape
+ *
+ * All presentational sub-components live under @/components/discussions/:
+ *   - SortTabs              → Hot / New / Top selector
+ *   - CreatePostButton      → trigger + modal for new posts
+ *   - PostCard              → single post in the list view (+ skeleton)
+ *   - PostDetail            → full post + comment thread view (+ skeleton)
+ *   - DiscussionCommentThread → nested comments under a post (used inside PostDetail)
+ *   - EmptyState            → shown when the list has zero posts
+ *   - ToastContainer        → bottom-right notification stack
+ *   - VoteArrow             → shared up/down arrow used in posts + comments
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+
+import { useCallback, useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  ArrowUp,
-  ArrowDown,
-  MessageCircle,
-  Plus,
-  Minus,
-  X,
-  TrendingUp,
-  Clock,
-  Award,
-  ChevronLeft,
-  Pencil,
-  Trash2,
-  Check,
-  AlertCircle,
-} from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
-import { UserAvatar } from '@/components/auth/UserAvatar';
-import { CommentComposer } from '@/components/feed/CommentComposer';
-import { RichTextEditor } from '@/components/feed/RichTextEditor';
-import { Button } from '@/components/ui/button';
+import { CreatePostButton } from '@/components/discussions/CreatePostButton';
+import { EmptyState } from '@/components/discussions/EmptyState';
+import { PostCard, PostCardSkeleton } from '@/components/discussions/PostCard';
+import { PostDetail, PostDetailSkeleton } from '@/components/discussions/PostDetail';
+import { SortTabs } from '@/components/discussions/SortTabs';
+import { ToastContainer, type Toast } from '@/components/discussions/Toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
-  discussionsApi,
   discussionKeys,
+  discussionsApi,
   type DiscussionPost,
-  type DiscussionComment,
   type SortOrder,
-  buildDiscussionTree,
-  countDiscussionComments,
-  shortTimeAgo,
-  type DiscussionVoteValue,
 } from '@/lib/discussions';
-
-/* ── Toast notification system ──────────────────────────────────────────────── */
-
-interface Toast {
-  id: string;
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
-
-function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-atomic="false"
-      className="fixed bottom-6 right-6 z-50 flex flex-col gap-2"
-    >
-      <AnimatePresence>
-        {toasts.map((toast) => (
-          <motion.div
-            key={toast.id}
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className={[
-              'flex items-center gap-2 rounded-lg border-2 border-black bg-card px-4 py-3 shadow-hard-sm',
-              toast.type === 'success' ? 'bg-real/20 border-real' : '',
-              toast.type === 'error' ? 'bg-danger/20 border-danger' : '',
-              toast.type === 'info' ? 'bg-accent/20 border-accent' : '',
-            ].join(' ')}
-          >
-            {toast.type === 'success' && <Check size={16} className="text-real" />}
-            {toast.type === 'error' && <AlertCircle size={16} className="text-danger" />}
-            {toast.type === 'info' && <AlertCircle size={16} className="text-accent" />}
-            <span className="text-label font-medium">{toast.message}</span>
-            <button
-              type="button"
-              onClick={() => onDismiss(toast.id)}
-              className="ml-2 rounded p-1 hover:bg-black/10"
-              aria-label="Dismiss"
-            >
-              <X size={14} />
-            </button>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ── Page ─────────────────────────────────────────────────────────────────── */
+import { EASE } from '@/lib/motion';
 
 export function Discussions() {
   const { id: postIdFromUrl } = useParams<{ id?: string }>();
@@ -111,8 +55,8 @@ export function Discussions() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const { user } = useAuth();
 
-  // URL-driven state: selectedPostId comes from URL params
   const selectedPostId = postIdFromUrl ?? null;
+  const qc = useQueryClient();
 
   const showToast = useCallback((message: string, type: Toast['type'] = 'success') => {
     const id = Math.random().toString(36).slice(2);
@@ -124,45 +68,39 @@ export function Discussions() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Keyboard shortcuts
+  // Escape closes the detail view
   useEffect(() => {
+    if (!selectedPostId) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedPostId) {
-        navigate('/discussions', { replace: true });
-      }
+      if (e.key === 'Escape') navigate('/discussions', { replace: true });
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedPostId, navigate]);
 
-  // List query
+  /* ── Queries ── */
+
   const listQuery = useQuery({
     queryKey: discussionKeys.list(sort),
     queryFn: () => discussionsApi.list(sort),
   });
 
-  // Detail query (only when a post is selected)
   const detailQuery = useQuery({
     queryKey: discussionKeys.detail(selectedPostId ?? ''),
     queryFn: () => discussionsApi.get(selectedPostId!),
     enabled: !!selectedPostId,
   });
 
-  const qc = useQueryClient();
+  /* ── Mutations ── */
 
-  // Vote on post mutation
   const voteMutation = useMutation({
     mutationFn: ({ postId, vote }: { postId: string; vote: 1 | -1 | 0 }) =>
       discussionsApi.vote(postId, vote),
     onSuccess: (result) => {
-      // Optimistically update the list
       qc.setQueryData(discussionKeys.list(sort), (old: { posts: DiscussionPost[] } | undefined) => {
         if (!old) return old;
-        return {
-          posts: old.posts.map((p) => (p.id === result.post.id ? result.post : p)),
-        };
+        return { posts: old.posts.map((p) => (p.id === result.post.id ? result.post : p)) };
       });
-      // Update detail if open
       if (selectedPostId === result.post.id) {
         qc.setQueryData(discussionKeys.detail(selectedPostId), (old: { post: DiscussionPost } | undefined) => {
           if (!old) return old;
@@ -172,63 +110,79 @@ export function Discussions() {
     },
   });
 
-  // Create post mutation
   const createPostMutation = useMutation({
-    mutationFn: (input: { title: string; body: string; imageUrl?: string | null }) => discussionsApi.create(input),
+    mutationFn: (input: { title: string; body: string; imageUrl?: string | null }) =>
+      discussionsApi.create(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
       showToast('Discussion posted!');
     },
   });
 
-  // Update post mutation — navigates back to list on success
   const updatePostMutation = useMutation({
-    mutationFn: ({ postId, title, body, imageUrl }: { postId: string; title?: string; body?: string; imageUrl?: string | null }) =>
-      discussionsApi.update(postId, { title, body, imageUrl }),
+    mutationFn: ({
+      postId,
+      title,
+      body,
+      imageUrl,
+    }: {
+      postId: string;
+      title?: string;
+      body?: string;
+      imageUrl?: string | null;
+    }) => discussionsApi.update(postId, { title, body, imageUrl }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
       qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId ?? '') });
       showToast('Changes saved!');
-      // Navigate back to main feed after saving
       navigate('/discussions', { replace: true });
     },
   });
 
-  // Delete post mutation
   const deletePostMutation = useMutation({
     mutationFn: (postId: string) => discussionsApi.delete(postId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
       showToast('Discussion deleted');
-      // Navigate back to main feed
       navigate('/discussions', { replace: true });
     },
   });
 
-  // Create comment mutation
   const createCommentMutation = useMutation({
     mutationFn: (input: { discussionId: string; parentCommentId?: string | null; body: string }) =>
       discussionsApi.createComment(input),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: discussionKeys.detail(v.discussionId) });
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
       showToast('Comment posted!');
     },
   });
 
-  // Vote on comment mutation
   const voteCommentMutation = useMutation({
-    mutationFn: ({ commentId, vote, discussionId }: { commentId: string; vote: DiscussionVoteValue; discussionId: string }) =>
-      discussionsApi.voteComment(commentId, vote, discussionId),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
+    mutationFn: ({
+      commentId,
+      vote,
+      discussionId,
+    }: {
+      commentId: string;
+      vote: 1 | -1 | 0;
+      discussionId: string;
+    }) => discussionsApi.voteComment(commentId, vote, discussionId),
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: discussionKeys.detail(v.discussionId) });
     },
   });
 
-  // Update comment mutation
   const updateCommentMutation = useMutation({
-    mutationFn: ({ discussionId, commentId, body }: { discussionId: string; commentId: string; body: string }) =>
-      discussionsApi.updateComment(discussionId, commentId, body),
+    mutationFn: ({
+      discussionId,
+      commentId,
+      body,
+    }: {
+      discussionId: string;
+      commentId: string;
+      body: string;
+    }) => discussionsApi.updateComment(discussionId, commentId, body),
     onSuccess: () => {
       if (selectedPostId) {
         qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId) });
@@ -237,28 +191,26 @@ export function Discussions() {
     },
   });
 
-  // Delete comment mutation
   const deleteCommentMutation = useMutation({
     mutationFn: ({ discussionId, commentId }: { discussionId: string; commentId: string }) =>
       discussionsApi.deleteComment(discussionId, commentId),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: discussionKeys.detail(v.discussionId) });
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
       showToast('Comment deleted');
     },
   });
 
+  /* ── Handlers ── */
+
   const handleVotePost = useCallback(
-    (postId: string, vote: 1 | -1 | 0) => {
-      voteMutation.mutate({ postId, vote });
-    },
+    (postId: string, vote: 1 | -1 | 0) => voteMutation.mutate({ postId, vote }),
     [voteMutation]
   );
 
   const handleVoteComment = useCallback(
-    (commentId: string, vote: DiscussionVoteValue, discussionId: string) => {
-      voteCommentMutation.mutate({ commentId, vote, discussionId });
-    },
+    (commentId: string, vote: 1 | -1 | 0, discussionId: string) =>
+      voteCommentMutation.mutate({ commentId, vote, discussionId }),
     [voteCommentMutation]
   );
 
@@ -271,7 +223,6 @@ export function Discussions() {
 
   const handleEditPost = useCallback(
     (post: DiscussionPost) => {
-      // Navigate to detail view and open edit mode
       navigate(`/discussions/${post.id}`, { replace: true });
       setEditOnMountId(post.id);
     },
@@ -297,60 +248,160 @@ export function Discussions() {
 
       <main className="mx-auto max-w-3xl px-6 py-8">
         {/* Page header */}
-        <div className="mb-6 flex items-center justify-between gap-4">
+        <motion.div
+          className="mb-6 flex items-end justify-between gap-4"
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: {},
+            show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+          }}
+        >
           <div>
-            <p className="flex items-center gap-1.5 text-label-small font-semibold uppercase tracking-wider text-foreground/70">
+            <motion.p
+              variants={{
+                hidden: { opacity: 0, y: 6 },
+                show: { opacity: 1, y: 0 },
+              }}
+              transition={{ duration: 0.5, ease: EASE }}
+              className="flex items-center gap-1.5 text-label-small font-semibold uppercase tracking-wider text-foreground/70"
+            >
               <MessageCircle size={14} aria-hidden="true" />
               Community
-            </p>
-            <h1 className="mt-1 inline-block font-display text-display-medium font-semibold leading-[0.95] tracking-display text-foreground">
-              Discussions
-              <span
+            </motion.p>
+            <h1 className="relative mt-1 inline-block font-display text-display-medium font-semibold leading-[0.95] tracking-display text-foreground">
+              <span className="relative inline-block overflow-hidden align-baseline">
+                <motion.span
+                  className="inline-block"
+                  variants={{
+                    hidden: { y: '110%', opacity: 0 },
+                    show: { y: '0%', opacity: 1 },
+                  }}
+                  transition={{ duration: 0.8, ease: EASE, delay: 0.1 }}
+                >
+                  Discussions
+                </motion.span>
+              </span>
+              {/* Brand-pink underline draws on after the heading settles */}
+              <motion.span
                 aria-hidden="true"
-                className="mt-2 block h-1.5 w-24 rounded-sm bg-pink-accent"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.7, ease: EASE, delay: 0.7 }}
+                style={{ transformOrigin: 'left center' }}
+                className="absolute -bottom-1 left-0 h-1.5 w-24 rounded-sm bg-pink-accent"
               />
             </h1>
           </div>
 
-          {user && <CreatePostButton open={openComposer} onOpenChange={setOpenComposer} onCreate={(t, b) => createPostMutation.mutate({ title: t, body: b })} isPending={createPostMutation.isPending} />}
-        </div>
+          {user && (
+            <motion.div
+              variants={{
+                hidden: { opacity: 0, scale: 0.9, y: 8 },
+                show: { opacity: 1, scale: 1, y: 0 },
+              }}
+              transition={{ duration: 0.55, ease: EASE, delay: 0.4 }}
+            >
+              <CreatePostButton
+                open={openComposer}
+                onOpenChange={setOpenComposer}
+                onCreate={(t, b) => createPostMutation.mutate({ title: t, body: b })}
+                isPending={createPostMutation.isPending}
+              />
+            </motion.div>
+          )}
+        </motion.div>
 
         {/* Sort tabs */}
-        <SortTabs sort={sort} onSortChange={setSort} />
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.35 }}
+        >
+          <SortTabs sort={sort} onSortChange={setSort} />
+        </motion.div>
 
         {/* Content */}
         <AnimatePresence mode="wait">
           {!selectedPostId ? (
             <motion.div
               key="list"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3, ease: EASE }}
             >
               {listQuery.isLoading ? (
-                <div className="space-y-4">
+                <motion.div
+                  className="space-y-4"
+                  initial="hidden"
+                  animate="show"
+                  variants={{
+                    hidden: {},
+                    show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
+                  }}
+                >
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <PostCardSkeleton key={i} />
+                    <motion.div
+                      key={i}
+                      variants={{
+                        hidden: { opacity: 0, y: 10 },
+                        show: { opacity: 1, y: 0 },
+                      }}
+                      transition={{ duration: 0.4, ease: EASE }}
+                    >
+                      <PostCardSkeleton />
+                    </motion.div>
                   ))}
-                </div>
+                </motion.div>
               ) : listQuery.data?.posts.length === 0 ? (
-                <EmptyState onCreate={() => setOpenComposer(true)} />
+                <motion.div
+                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.6, ease: EASE }}
+                >
+                  <EmptyState onCreate={() => setOpenComposer(true)} />
+                </motion.div>
               ) : (
-                <div className="space-y-4">
-                  {listQuery.data?.posts.map((post) => (
-                    <PostCard
-                      key={post.id}
-                      post={post}
-                      onSelect={() => navigate(`/discussions/${post.id}`, { replace: true })}
-                      onVote={(v) => handleVotePost(post.id, v)}
-                      isVoting={voteMutation.isPending && voteMutation.variables?.postId === post.id}
-                      onEdit={user?.id === post.authorId ? () => handleEditPost(post) : undefined}
-                      onDelete={user?.id === post.authorId ? () => handleDeletePost(post.id) : undefined}
-                      canModify={user?.id === post.authorId}
-                    />
-                  ))}
-                </div>
+                <motion.div
+                  className="space-y-4"
+                  initial="hidden"
+                  animate="show"
+                  variants={{
+                    hidden: {},
+                    show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+                  }}
+                >
+                  <AnimatePresence mode="popLayout">
+                    {listQuery.data?.posts.map((post) => (
+                      <motion.div
+                        key={post.id}
+                        layout
+                        variants={{
+                          hidden: { opacity: 0, y: 16, filter: 'blur(6px)' },
+                          show: { opacity: 1, y: 0, filter: 'blur(0px)' },
+                        }}
+                        transition={{ duration: 0.55, ease: EASE }}
+                      >
+                        <PostCard
+                          post={post}
+                          onSelect={() => navigate(`/discussions/${post.id}`, { replace: true })}
+                          onVote={(v) => handleVotePost(post.id, v)}
+                          isVoting={
+                            voteMutation.isPending && voteMutation.variables?.postId === post.id
+                          }
+                          onEdit={
+                            user?.id === post.authorId ? () => handleEditPost(post) : undefined
+                          }
+                          onDelete={
+                            user?.id === post.authorId ? () => handleDeletePost(post.id) : undefined
+                          }
+                          canModify={user?.id === post.authorId}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
               )}
             </motion.div>
           ) : (
@@ -359,7 +410,7 @@ export function Discussions() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.3, ease: EASE }}
             >
               {detailQuery.isLoading ? (
                 <PostDetailSkeleton />
@@ -369,20 +420,34 @@ export function Discussions() {
                   comments={detailQuery.data.comments}
                   onBack={handleBack}
                   onVotePost={(v) => handleVotePost(detailQuery.data!.post.id, v)}
-                  onVoteComment={(commentId, v) => handleVoteComment(commentId, v, detailQuery.data!.post.id)}
-                  onReply={(parentId, body) => handleCreateComment(detailQuery.data!.post.id, parentId, body)}
+                  onVoteComment={(commentId, v) =>
+                    handleVoteComment(commentId, v, detailQuery.data!.post.id)
+                  }
+                  onReply={(parentId, body) =>
+                    handleCreateComment(detailQuery.data!.post.id, parentId, body)
+                  }
                   onEditComment={async (commentId: string, body: string) => {
-                    await updateCommentMutation.mutateAsync({ discussionId: detailQuery.data!.post.id, commentId, body });
+                    await updateCommentMutation.mutateAsync({
+                      discussionId: detailQuery.data!.post.id,
+                      commentId,
+                      body,
+                    });
                   }}
                   onDeleteComment={(commentId) => {
                     if (window.confirm('Delete this comment?')) {
-                      deleteCommentMutation.mutate({ discussionId: detailQuery.data!.post.id, commentId });
+                      deleteCommentMutation.mutate({
+                        discussionId: detailQuery.data!.post.id,
+                        commentId,
+                      });
                     }
                   }}
                   onEditPost={async (postId: string, title: string, body: string) => {
                     await updatePostMutation.mutateAsync({ postId, title, body });
                   }}
-                  isPostVoting={voteMutation.isPending && voteMutation.variables?.postId === detailQuery.data?.post.id}
+                  isPostVoting={
+                    voteMutation.isPending &&
+                    voteMutation.variables?.postId === detailQuery.data?.post.id
+                  }
                   canInteract={!!user}
                   currentUserId={user?.id}
                   editOnMountId={editOnMountId}
@@ -393,954 +458,7 @@ export function Discussions() {
         </AnimatePresence>
       </main>
 
-      {/* Toast notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-    </div>
-  );
-}
-
-/* ── Sort tabs ─────────────────────────────────────────────────────────────── */
-
-const SORT_OPTIONS: { value: SortOrder; label: string; icon: React.ReactNode }[] = [
-  { value: 'hot', label: 'Hot', icon: <TrendingUp size={13} aria-hidden="true" /> },
-  { value: 'new', label: 'New', icon: <Clock size={13} aria-hidden="true" /> },
-  { value: 'top', label: 'Top', icon: <Award size={13} aria-hidden="true" /> },
-];
-
-function SortTabs({ sort, onSortChange }: { sort: SortOrder; onSortChange: (s: SortOrder) => void }) {
-  return (
-    <div className="mb-5 flex gap-2">
-      {SORT_OPTIONS.map((opt) => {
-        const isActive = sort === opt.value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onSortChange(opt.value)}
-            className={[
-              'inline-flex items-center gap-1.5 rounded-lg border-2 border-black px-3 py-1.5 text-label-small font-semibold transition-all hover-lift',
-              isActive
-                ? 'bg-pink-accent text-black shadow-hard-sm'
-                : 'bg-card text-foreground shadow-hard-sm',
-            ].join(' ')}
-          >
-            {opt.icon}
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── Post card ─────────────────────────────────────────────────────────────── */
-
-interface PostCardProps {
-  post: DiscussionPost;
-  onSelect: () => void;
-  onVote: (vote: 1 | -1 | 0) => void;
-  isVoting?: boolean;
-  onEdit?: (postId: string) => void;
-  onDelete?: (postId: string) => void;
-  canModify?: boolean;
-}
-
-function PostCard({ post, onSelect, onVote, isVoting, onEdit, onDelete, canModify }: PostCardProps) {
-  const score = post.upvotes - post.downvotes;
-  const cast = (dir: 1 | -1) => {
-    if (isVoting) return;
-    onVote(post.myVote === dir ? 0 : dir);
-  };
-
-  return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="group cursor-pointer rounded-lg border-2 border-black bg-card shadow-hard-sm transition-all hover-lift"
-      onClick={onSelect}
-      aria-label={`Post: ${post.title}`}
-    >
-      <div className="flex gap-0">
-        {/* Vote column */}
-        <div
-          className="flex w-14 flex-col items-center gap-1 border-r-2 border-black bg-orange/10 py-4"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => cast(1)}
-            disabled={isVoting}
-            aria-label="Upvote"
-            aria-pressed={post.myVote === 1}
-            className={[
-              'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-              'hover:-translate-y-0.5 hover:shadow-hard-sm',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              post.myVote === 1
-                ? 'bg-pink-accent text-black shadow-hard-sm'
-                : 'bg-card hover:bg-pink-accent/40',
-            ].join(' ')}
-          >
-            <ArrowUp size={14} strokeWidth={2.5} aria-hidden="true" />
-          </button>
-
-          <span
-            className={[
-              'text-label-small font-bold tabular-nums',
-              score > 0 ? 'text-real' : score < 0 ? 'text-danger' : 'text-muted-foreground',
-            ].join(' ')}
-          >
-            {score}
-          </span>
-
-          <button
-            type="button"
-            onClick={() => cast(-1)}
-            disabled={isVoting}
-            aria-label="Downvote"
-            aria-pressed={post.myVote === -1}
-            className={[
-              'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-              'hover:-translate-y-0.5 hover:shadow-hard-sm',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              post.myVote === -1
-                ? 'bg-red text-white shadow-hard-sm'
-                : 'bg-card hover:bg-red/20',
-            ].join(' ')}
-          >
-            <ArrowDown size={14} strokeWidth={2.5} aria-hidden="true" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="min-w-0 flex-1 p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h2 className="font-display text-heading-3 font-semibold leading-tight text-foreground group-hover:text-pink-accent flex-1">
-              {post.title}
-            </h2>
-            {canModify && (
-              <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                {onEdit && (
-                  <button
-                    type="button"
-                    onClick={() => onEdit(post.id)}
-                    className="rounded p-1.5 border-2 border-black bg-card hover:bg-muted transition-all"
-                    aria-label="Edit post"
-                  >
-                    <Pencil size={12} aria-hidden="true" />
-                  </button>
-                )}
-                {onDelete && (
-                  <button
-                    type="button"
-                    onClick={() => onDelete(post.id)}
-                    className="rounded p-1.5 border-2 border-black bg-card hover:bg-danger/20 hover:text-danger transition-all"
-                    aria-label="Delete post"
-                  >
-                    <Trash2 size={12} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          <div
-            className="mt-1.5 line-clamp-2 text-label text-foreground/80 discussion-body"
-            dangerouslySetInnerHTML={{ __html: post.body }}
-          />
-
-          {post.imageUrl && (
-            <img
-              src={post.imageUrl}
-              alt="Attachment"
-              className="mt-3 max-h-48 rounded-lg border-2 border-black object-cover"
-            />
-          )}
-
-          <div className="mt-3 flex items-center justify-between gap-3">
-            {/* Author + time */}
-            <div className="flex items-center gap-2">
-              <UserAvatar
-                src={post.authorAvatarUrl}
-                name={post.authorName}
-                size={20}
-                className="border border-black"
-              />
-              <span className="text-label-small font-medium">{post.authorName}</span>
-              <span className="text-muted-foreground">·</span>
-              <span className="text-label-small text-muted-foreground">
-                {shortTimeAgo(post.createdAt)}
-              </span>
-            </div>
-
-            {/* Comment count */}
-            <div className="flex items-center gap-1.5 text-label-small font-semibold text-foreground">
-              <MessageCircle size={13} aria-hidden="true" />
-              <span>{post.commentCount}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </motion.article>
-  );
-}
-
-/* ── Post detail ───────────────────────────────────────────────────────────── */
-
-interface PostDetailProps {
-  post: DiscussionPost;
-  comments: DiscussionComment[];
-  onBack: () => void;
-  onVotePost: (vote: 1 | -1 | 0) => void;
-  onVoteComment: (commentId: string, vote: DiscussionVoteValue) => void;
-  onReply: (parentCommentId: string | null, body: string) => Promise<void>;
-  onEditComment: (commentId: string, body: string) => Promise<void>;
-  onDeleteComment: (commentId: string) => void;
-  onEditPost: (postId: string, title: string, body: string) => Promise<void>;
-  isPostVoting?: boolean;
-  canInteract: boolean;
-  currentUserId?: string;
-  editOnMountId?: string | null;
-}
-
-function PostDetail({
-  post,
-  comments,
-  onBack,
-  onVotePost,
-  onVoteComment,
-  onReply,
-  onEditComment,
-  onDeleteComment,
-  onEditPost,
-  isPostVoting,
-  canInteract,
-  currentUserId,
-  editOnMountId,
-}: PostDetailProps) {
-  const [editing, setEditing] = useState(editOnMountId === post.id);
-  const [editTitle, setEditTitle] = useState(post.title);
-  const [editBody, setEditBody] = useState(post.body);
-  const editSectionRef = useRef<HTMLDivElement>(null);
-  const score = post.upvotes - post.downvotes;
-  const tree = buildDiscussionTree(comments);
-  const canModify = currentUserId === post.authorId;
-
-  // Scroll to edit section when edit mode opens via editOnMountId
-  useEffect(() => {
-    if (editing) {
-      setTimeout(() => {
-        editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-    }
-  }, [editing]);
-
-  const cast = (dir: 1 | -1) => {
-    onVotePost(post.myVote === dir ? 0 : dir);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editTitle.trim()) return;
-    // Tiptap renders empty content as <p></p> — strip those before checking
-    const strippedBody = editBody.replace(/<p>\s*<\/p>/g, '').trim();
-    if (!strippedBody) return;
-    await onEditPost(post.id, editTitle.trim(), editBody);
-    setEditing(false);
-  };
-
-  const handleCancelEdit = () => {
-    setEditing(false);
-    setEditTitle(post.title);
-    setEditBody(post.body);
-  };
-
-  const scrollToEdit = () => {
-    setEditing(true);
-    setTimeout(() => {
-      editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
-  };
-
-  return (
-    <div>
-      {/* Back button */}
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 inline-flex items-center gap-1.5 rounded-lg border-2 border-black bg-pink-accent px-3 py-1.5 text-label-small font-semibold shadow-hard-sm transition-all hover-lift"
-      >
-        <ChevronLeft size={14} aria-hidden="true" />
-        Back
-      </button>
-
-      {/* Post */}
-      <article className="rounded-lg border-2 border-black bg-card shadow-hard">
-        <div className="flex gap-0">
-          {/* Vote column */}
-          <div className="flex w-14 flex-col items-center gap-1 border-r-2 border-black bg-orange/10 py-4">
-            <button
-              type="button"
-              onClick={() => cast(1)}
-              disabled={isPostVoting}
-              aria-label="Upvote"
-              aria-pressed={post.myVote === 1}
-              className={[
-                'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-                'hover:-translate-y-0.5 hover:shadow-hard-sm',
-                'disabled:opacity-50',
-                post.myVote === 1
-                  ? 'bg-pink-accent text-black shadow-hard-sm'
-                  : 'bg-card hover:bg-pink-accent/40',
-              ].join(' ')}
-            >
-              <ArrowUp size={14} strokeWidth={2.5} aria-hidden="true" />
-            </button>
-
-            <span
-              className={[
-                'text-label-small font-bold tabular-nums',
-                score > 0 ? 'text-real' : score < 0 ? 'text-red' : 'text-muted-foreground',
-              ].join(' ')}
-            >
-              {score}
-            </span>
-
-            <button
-              type="button"
-              onClick={() => cast(-1)}
-              disabled={isPostVoting}
-              aria-label="Downvote"
-              aria-pressed={post.myVote === -1}
-              className={[
-                'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-                'hover:-translate-y-0.5 hover:shadow-hard-sm',
-                'disabled:opacity-50',
-                post.myVote === -1
-                  ? 'bg-red text-white shadow-hard-sm'
-                  : 'bg-card hover:bg-red/20',
-              ].join(' ')}
-            >
-              <ArrowDown size={14} strokeWidth={2.5} aria-hidden="true" />
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="min-w-0 flex-1 p-5">
-            {editing ? (
-              <div className="space-y-3" ref={editSectionRef}>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  maxLength={300}
-                  className="w-full rounded-lg border-2 border-black bg-card px-3 py-2 text-label font-semibold shadow-hard-sm outline-none focus:ring-2 focus:ring-black"
-                />
-                <RichTextEditor
-                  content={editBody}
-                  onChange={setEditBody}
-                  placeholder="Write your post…"
-                  maxLength={2000}
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSaveEdit}
-                    className="rounded-lg border-2 border-black bg-accent px-4 py-1.5 text-label-small font-semibold shadow-hard-sm hover:bg-accent/90"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="rounded-lg border-2 border-black bg-card px-4 py-1.5 text-label-small font-semibold shadow-hard-sm hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <h1 className="font-display text-heading-2 font-semibold leading-tight text-foreground flex-1">
-                    {post.title}
-                  </h1>
-                  {canModify && (
-                    <button
-                      type="button"
-                      onClick={scrollToEdit}
-                      className="shrink-0 rounded-lg border-2 border-black bg-card p-1.5 text-label-small font-semibold shadow-hard-sm hover:bg-muted"
-                      aria-label="Edit post"
-                    >
-                      <Pencil size={14} aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="mt-2 flex items-center gap-2">
-                  <UserAvatar
-                    src={post.authorAvatarUrl}
-                    name={post.authorName}
-                    size={22}
-                    className="border border-black"
-                  />
-                  <span className="text-label font-medium">{post.authorName}</span>
-                  <span className="text-muted-foreground">·</span>
-                  <span className="text-label-small text-muted-foreground">
-                    {shortTimeAgo(post.createdAt)}
-                  </span>
-                </div>
-
-                <div
-                  className="mt-4 text-label leading-relaxed text-foreground/90 discussion-body"
-                  dangerouslySetInnerHTML={{ __html: post.body }}
-                />
-              </>
-            )}
-          </div>
-        </div>
-      </article>
-
-      {/* Comment thread */}
-      {tree.length > 0 && (
-        <div className="mt-6">
-          <p className="mb-3 text-label-small font-bold uppercase tracking-wider text-dark-panel">
-            {countDiscussionComments(tree)} {countDiscussionComments(tree) === 1 ? 'comment' : 'comments'}
-          </p>
-          <DiscussionCommentThread
-            nodes={tree}
-            onVote={(commentId, vote) => onVoteComment(commentId, vote)}
-            onReply={async (parentId, body) => {
-              await onReply(parentId, body);
-            }}
-            onEdit={onEditComment}
-            onDelete={onDeleteComment}
-            canInteract={canInteract}
-            currentUserId={currentUserId}
-          />
-        </div>
-      )}
-
-      {/* Comment composer — at bottom, Reddit-style */}
-      <div className="mt-5">
-        {canInteract ? (
-          <CommentComposer
-            autoFocus={false}
-            placeholder="Share your thoughts…"
-            submitLabel="Post"
-            onSubmit={async (body) => {
-              await onReply(null, body);
-            }}
-          />
-        ) : (
-          <p className="text-center text-label-small text-muted-foreground">
-            Sign in to join the discussion.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Create post button + modal ────────────────────────────────────────────── */
-
-interface CreatePostButtonProps {
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  onCreate: (title: string, body: string) => void;
-  isPending: boolean;
-}
-
-function CreatePostButton({ open: controlledOpen, onOpenChange, onCreate, isPending }: CreatePostButtonProps) {
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = controlledOpen ?? internalOpen;
-  const setOpen = onOpenChange ?? setInternalOpen;
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  // Focus first input when modal opens; close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setOpen(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    // Focus the title input
-    setTimeout(() => dialogRef.current?.querySelector<HTMLInputElement>('#post-title')?.focus(), 50);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, setOpen]);
-
-  const handleSubmit = async () => {
-    if (!title.trim() || !body.trim()) return;
-    await onCreate(title.trim(), body.trim());
-    setTitle('');
-    setBody('');
-    setOpen(false);
-  };
-
-  return (
-    <>
-      <Button
-        onClick={() => setOpen(true)}
-        className="bg-accent text-accent-foreground border-2 border-black rounded-lg shadow-hard hover-lift gap-1.5"
-      >
-        <Plus size={15} aria-hidden="true" />
-        New Post
-      </Button>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            {/* Overlay */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-              onClick={() => setOpen(false)}
-              aria-hidden="true"
-            />
-
-            {/* Modal */}
-            <motion.div
-              ref={dialogRef}
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-6"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Create new post"
-            >
-              <div className="w-full max-w-lg rounded-2xl border-2 border-black bg-card shadow-hard-lg max-h-[90vh] overflow-y-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b-2 border-black px-5 py-4">
-                  <h2 className="font-display text-heading-3 font-semibold">New Discussion</h2>
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    className="grid size-8 place-items-center rounded-lg border-2 border-black bg-card shadow-hard-sm transition-all hover:bg-muted"
-                    aria-label="Close"
-                  >
-                    <X size={15} aria-hidden="true" />
-                  </button>
-                </div>
-
-                {/* Form */}
-                <div className="space-y-4 p-5">
-                  <div>
-                    <label
-                      htmlFor="post-title"
-                      className="mb-1.5 block text-label-small font-semibold"
-                    >
-                      Title
-                    </label>
-                    <input
-                      id="post-title"
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="What do you want to discuss?"
-                      maxLength={300}
-                      className="w-full rounded-lg border-2 border-black bg-card px-3 py-2.5 text-label shadow-hard-sm outline-none focus:ring-2 focus:ring-black placeholder:text-muted-foreground"
-                    />
-                    <p className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
-                      {title.length}/300
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-label-small font-semibold">
-                      Body
-                    </label>
-                    <RichTextEditor
-                      content={body}
-                      onChange={setBody}
-                      placeholder="Share your thoughts, questions, or insights…"
-                      maxLength={2000}
-                    />
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="flex justify-end gap-3 border-t-2 border-black px-5 py-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => setOpen(false)}
-                    className="border-2 border-black rounded-lg shadow-hard-sm"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={() => void handleSubmit()}
-                    disabled={!title.trim() || !body.trim() || isPending}
-                    className="bg-accent text-accent-foreground border-2 border-black rounded-lg shadow-hard hover-lift gap-1.5"
-                  >
-                    {isPending ? 'Posting…' : 'Post Discussion'}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
-
-/* ── Skeletons ─────────────────────────────────────────────────────────────── */
-
-function PostCardSkeleton() {
-  return (
-    <div className="rounded-lg border-2 border-black bg-card shadow-hard-sm p-4">
-      <div className="flex gap-3">
-        <div className="w-14 border-r-2 border-black pr-3">
-          <div className="mx-auto size-8 rounded-md bg-muted animate-pulse" />
-          <div className="mx-auto mt-1.5 h-4 w-6 rounded bg-muted animate-pulse" />
-          <div className="mx-auto mt-1.5 size-8 rounded-md bg-muted animate-pulse" />
-        </div>
-        <div className="flex-1 space-y-2">
-          <div className="h-5 w-3/4 rounded bg-muted animate-pulse" />
-          <div className="h-4 w-full rounded bg-muted animate-pulse" />
-          <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
-          <div className="mt-3 flex gap-2">
-            <div className="size-5 rounded-full bg-muted animate-pulse" />
-            <div className="h-4 w-24 rounded bg-muted animate-pulse" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PostDetailSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="h-10 w-24 rounded-lg bg-muted animate-pulse" />
-      <div className="rounded-lg border-2 border-black bg-card p-5 shadow-hard">
-        <div className="flex gap-3">
-          <div className="w-14 border-r-2 border-black pr-3">
-            <div className="mx-auto size-8 rounded-md bg-muted animate-pulse" />
-            <div className="mx-auto mt-1.5 h-4 w-6 rounded bg-muted animate-pulse" />
-            <div className="mx-auto mt-1.5 size-8 rounded-md bg-muted animate-pulse" />
-          </div>
-          <div className="flex-1 space-y-3">
-            <div className="h-7 w-full rounded bg-muted animate-pulse" />
-            <div className="flex gap-2">
-              <div className="size-6 rounded-full bg-muted animate-pulse" />
-              <div className="h-4 w-32 rounded bg-muted animate-pulse" />
-            </div>
-            <div className="h-20 w-full rounded bg-muted animate-pulse" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Discussion comment thread ─────────────────────────────────────────────── */
-
-const DEPTH_COLORS = [
-  'border-pink-accent',
-  'border-orange',
-  'border-red',
-  'border-real',
-  'border-pink-accent',
-];
-
-interface DiscussionCommentThreadProps {
-  nodes: import('@/lib/discussions').DiscussionCommentNode[];
-  onVote: (commentId: string, vote: DiscussionVoteValue) => void;
-  onReply: (parentCommentId: string, body: string) => Promise<void>;
-  onEdit: (commentId: string, body: string) => Promise<void>;
-  onDelete: (commentId: string) => void;
-  canInteract: boolean;
-  currentUserId?: string;
-}
-
-export function DiscussionCommentThread({ nodes, onVote, onReply, onEdit, onDelete, canInteract, currentUserId }: DiscussionCommentThreadProps) {
-  return (
-    <ul className="space-y-3" role="list">
-      {nodes.map((node) => (
-        <DiscussionCommentItem
-          key={node.id}
-          node={node}
-          onVote={onVote}
-          onReply={onReply}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          canInteract={canInteract}
-          depth={0}
-          currentUserId={currentUserId}
-        />
-      ))}
-    </ul>
-  );
-}
-
-interface DiscussionCommentItemProps {
-  node: import('@/lib/discussions').DiscussionCommentNode;
-  onVote: (commentId: string, vote: DiscussionVoteValue) => void;
-  onReply: (parentCommentId: string, body: string) => Promise<void>;
-  onEdit: (commentId: string, body: string) => Promise<void>;
-  onDelete: (commentId: string) => void;
-  canInteract: boolean;
-  depth: number;
-  currentUserId?: string;
-}
-
-function DiscussionCommentItem({ node, onVote, onReply, onEdit, onDelete, canInteract, depth, currentUserId }: DiscussionCommentItemProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  const [replying, setReplying] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(node.body);
-
-  const score = node.upvotes - node.downvotes;
-  const hasKids = node.children.length > 0;
-  const railColor = DEPTH_COLORS[depth % DEPTH_COLORS.length];
-  const canModify = currentUserId === node.userId && !node.isDeleted;
-
-  const cast = (dir: 1 | -1) => onVote(node.id, node.myVote === dir ? 0 : dir);
-
-  const handleSaveEdit = async () => {
-    if (!editBody.trim()) return;
-    await onEdit(node.id, editBody.trim());
-    setEditing(false);
-  };
-
-  return (
-    <motion.li
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      className="relative"
-    >
-      {depth > 0 && (
-        <div
-          className={['absolute left-0 top-0 bottom-0 w-1 rounded-full', railColor].join(' ')}
-          style={{ opacity: 0.6 }}
-          aria-hidden="true"
-        />
-      )}
-
-      <div className={['rounded-lg border-2 border-black bg-card transition-colors', node.isFlagged ? 'bg-warning/20' : ''].join(' ')}>
-        <div className="flex gap-3 p-3">
-          {/* Vote column */}
-          <div className="flex flex-col items-center gap-1 shrink-0">
-            <button
-              type="button"
-              disabled={!canInteract || node.isDeleted}
-              onClick={() => cast(1)}
-              aria-label="Upvote"
-              aria-pressed={node.myVote === 1}
-              className={[
-                'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-                'hover:-translate-y-0.5 hover:shadow-hard-sm',
-                'disabled:cursor-not-allowed disabled:opacity-40',
-                node.myVote === 1 ? 'bg-pink-accent text-black shadow-hard-sm' : 'bg-card hover:bg-pink-accent/40',
-              ].join(' ')}
-            >
-              <ArrowUp size={14} strokeWidth={2.5} aria-hidden="true" />
-            </button>
-
-            <span className={['text-label-small font-bold tabular-nums', score > 0 ? 'text-real' : score < 0 ? 'text-red' : 'text-muted-foreground'].join(' ')}>
-              {score}
-            </span>
-
-            <button
-              type="button"
-              disabled={!canInteract || node.isDeleted}
-              onClick={() => cast(-1)}
-              aria-label="Downvote"
-              aria-pressed={node.myVote === -1}
-              className={[
-                'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-                'hover:-translate-y-0.5 hover:shadow-hard-sm',
-                'disabled:cursor-not-allowed disabled:opacity-40',
-                node.myVote === -1 ? 'bg-red text-white shadow-hard-sm' : 'bg-card hover:bg-red/20',
-              ].join(' ')}
-            >
-              <ArrowDown size={14} strokeWidth={2.5} aria-hidden="true" />
-            </button>
-          </div>
-
-          {/* Body column */}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              {!node.isDeleted ? (
-                <>
-                  <UserAvatar src={node.authorAvatarUrl} name={node.authorName} size={24} className="border border-black" />
-                  <span className="text-label font-semibold truncate">{node.authorName}</span>
-                </>
-              ) : (
-                <span className="text-label text-muted-foreground italic">[deleted]</span>
-              )}
-              <span className="text-muted-foreground">·</span>
-              <span className="text-label-small text-muted-foreground shrink-0">{shortTimeAgo(node.createdAt)}</span>
-            </div>
-
-            {/* Show edit mode if editing */}
-            {editing ? (
-              <div className="mt-2 space-y-2">
-                <textarea
-                  value={editBody}
-                  onChange={(e) => setEditBody(e.target.value)}
-                  className="w-full rounded-lg border-2 border-black bg-card px-3 py-2 text-label shadow-hard-sm outline-none focus:ring-2 focus:ring-black"
-                  rows={3}
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSaveEdit}
-                    className="rounded-lg border-2 border-black bg-accent px-3 py-1 text-label-small font-semibold shadow-hard-sm hover:bg-accent/90"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setEditing(false); setEditBody(node.body); }}
-                    className="rounded-lg border-2 border-black bg-card px-3 py-1 text-label-small font-semibold shadow-hard-sm hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : node.isDeleted ? (
-              <p className="mt-2 text-label text-muted-foreground italic">[This comment has been deleted]</p>
-            ) : (
-              <div
-                className="mt-2 text-label leading-relaxed text-foreground/90 discussion-body"
-                style={{ overflowWrap: 'anywhere' }}
-                dangerouslySetInnerHTML={{ __html: node.body }}
-              />
-            )}
-
-            {canInteract && !node.isDeleted && (
-              <div className="mt-2 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setReplying((r) => !r)}
-                  className={['inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all', replying ? 'bg-orange text-black shadow-hard-sm' : 'bg-card hover:bg-orange/30 hover:-translate-y-0.5 hover:shadow-hard-sm'].join(' ')}
-                >
-                  Reply
-                </button>
-                {canModify && !editing && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setEditing(true)}
-                      className="inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all bg-card hover:bg-muted"
-                    >
-                      <Pencil size={12} aria-hidden="true" />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(node.id)}
-                      className="inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all bg-card hover:bg-danger/20 hover:text-danger"
-                    >
-                      <Trash2 size={12} aria-hidden="true" />
-                      Delete
-                    </button>
-                  </>
-                )}
-                {hasKids && (
-                  <button
-                    type="button"
-                    onClick={() => setCollapsed((c) => !c)}
-                    className={['inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all', collapsed ? 'bg-card hover:bg-muted' : 'bg-orange/20 hover:bg-orange/35'].join(' ')}
-                  >
-                    {collapsed ? <Plus size={12} aria-hidden="true" /> : <Minus size={12} aria-hidden="true" />}
-                    <span>{collapsed ? 'Show' : 'Hide'} {node.children.length} {node.children.length === 1 ? 'reply' : 'replies'}</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Reply composer */}
-        <AnimatePresence>
-          {replying && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="overflow-hidden"
-            >
-              <div className="border-t-2 border-black bg-muted/30 px-3 py-3">
-                <CommentComposer
-                  autoFocus
-                  placeholder={`Reply to ${node.authorName}…`}
-                  submitLabel="Reply"
-                  onSubmit={async (body) => {
-                    await onReply(node.id, body);
-                    setReplying(false);
-                  }}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Children */}
-      <AnimatePresence>
-        {hasKids && !collapsed && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden"
-          >
-            <ul className={['mt-3 space-y-3 border-l-2 pl-4', railColor].join(' ')} style={{ borderLeftWidth: '3px' }} role="list">
-              {node.children.map((child) => (
-                <DiscussionCommentItem
-                  key={child.id}
-                  node={child}
-                  onVote={onVote}
-                  onReply={onReply}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  canInteract={canInteract}
-                  depth={depth + 1}
-                  currentUserId={currentUserId}
-                />
-              ))}
-            </ul>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.li>
-  );
-}
-
-/* ── Empty state ───────────────────────────────────────────────────────────── */
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="rounded-lg border-2 border-black bg-card p-10 text-center shadow-hard">
-      <div className="mx-auto grid size-12 place-items-center rounded-lg border-2 border-black bg-accent">
-        <MessageCircle size={22} strokeWidth={2} aria-hidden="true" />
-      </div>
-      <p className="mt-4 font-display text-heading-3 font-semibold">No discussions yet</p>
-      <p className="mt-2 text-label text-foreground/70">
-        Be the first to start a conversation!
-      </p>
-      <Button
-        onClick={onCreate}
-        className="mt-5 bg-accent text-accent-foreground border-2 border-black rounded-lg shadow-hard hover-lift gap-1.5"
-      >
-        <Plus size={15} aria-hidden="true" />
-        Start a Discussion
-      </Button>
     </div>
   );
 }

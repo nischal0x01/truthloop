@@ -1,66 +1,68 @@
 /**
- * CommentThread — enhanced recursive nested comment list (Reddit-style).
+ * DiscussionCommentThread — recursive nested comment list for /discussions/:id.
  *
- * Visual improvements:
- * - Better depth indicators with colored left rails
- * - Smooth collapse/expand animations
- * - Improved author attribution with better spacing
- * - Enhanced vote buttons with better hover states
- * - Reply threading with visual connection lines
- * - Flagged comments have distinct visual treatment
+ * Mirrors the ClaimDetailPanel's CommentThread: depth-coloured rails,
+ * magnetic vote arrows, spring score counter, rotating reply icon,
+ * collapse/expand via AnimatePresence mode="wait" swapping ± icons.
  *
- * Motion polish (P5 H5 E5 S5 R5 V4):
- *   - Stagger fade-up reveal across the thread
- *   - Magnetic vote arrows with spring scale + pressed-state feedback
- *   - Score number springs on change (key={score})
- *   - Reply composer slides down (height + opacity) instead of pure opacity
- *   - Reply button rotates the CornerDownRight icon when toggled
- *   - Collapse/expand uses AnimatePresence mode="wait" to swap ± icons
- *   - Depth rail animates in with scaleY from the top
- *   - Flagged badge has a continuously-wiggling ShieldAlert icon
- *   - Card lifts slightly on hover with shadow expansion
- *   - Whole `<li>` gets layout prop so siblings reflow when one expands
- *
- * Pure presentation + local collapse/reply-target state. The parent owns the
- * mutations and passes `onVote` / `onReply`.
+ * The two threads are intentionally separate components (one talks to the
+ * claim-comments API, the other to the discussion-comments API); they share
+ * the same motion language but keep their own state machines.
  */
 
-/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
-
 import { useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
-  ArrowUp,
-  ArrowDown,
   CornerDownRight,
   Minus,
+  Pencil,
   Plus,
   ShieldAlert,
-  Pencil,
   Trash2,
 } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { UserAvatar } from '@/components/auth/UserAvatar';
-import { CommentComposer } from './CommentComposer';
-import { shortTimeAgo, type CommentNode, type CommentVoteValue } from '@/lib/comments';
+import { CommentComposer } from '@/components/feed/CommentComposer';
+import {
+  shortTimeAgo,
+  type DiscussionCommentNode,
+  type DiscussionVoteValue,
+} from '@/lib/discussions';
+import { EASE } from '@/lib/motion';
+import { VoteArrow } from './VoteArrow';
 
-const EASE = [0.32, 0.72, 0, 1] as const;
+/** Depth rail colours — cycles pink → orange → red → green → pink */
+const DEPTH_COLORS = [
+  'border-pink-accent',
+  'border-orange',
+  'border-red',
+  'border-real',
+  'border-pink-accent',
+];
 
-interface CommentThreadProps {
-  nodes: CommentNode[];
-  onVote: (commentId: string, vote: CommentVoteValue) => void;
+interface DiscussionCommentThreadProps {
+  nodes: DiscussionCommentNode[];
+  onVote: (commentId: string, vote: DiscussionVoteValue) => void;
   onReply: (parentCommentId: string, body: string) => Promise<void>;
-  onEdit?: (commentId: string, body: string) => Promise<void>;
-  onDelete?: (commentId: string) => void;
+  onEdit: (commentId: string, body: string) => Promise<void>;
+  onDelete: (commentId: string) => void;
   canInteract: boolean;
   currentUserId?: string;
 }
 
-export function CommentThread({ nodes, onVote, onReply, onEdit, onDelete, canInteract, currentUserId }: CommentThreadProps) {
+export function DiscussionCommentThread({
+  nodes,
+  onVote,
+  onReply,
+  onEdit,
+  onDelete,
+  canInteract,
+  currentUserId,
+}: DiscussionCommentThreadProps) {
   return (
     <ul className="space-y-3" role="list">
       <AnimatePresence initial={false}>
         {nodes.map((node, i) => (
-          <CommentItem
+          <DiscussionCommentItem
             key={node.id}
             node={node}
             onVote={onVote}
@@ -78,28 +80,19 @@ export function CommentThread({ nodes, onVote, onReply, onEdit, onDelete, canInt
   );
 }
 
-interface CommentItemProps {
-  node: CommentNode;
-  onVote: (commentId: string, vote: CommentVoteValue) => void;
+interface DiscussionCommentItemProps {
+  node: DiscussionCommentNode;
+  onVote: (commentId: string, vote: DiscussionVoteValue) => void;
   onReply: (parentCommentId: string, body: string) => Promise<void>;
-  onEdit?: (commentId: string, body: string) => Promise<void>;
-  onDelete?: (commentId: string) => void;
+  onEdit: (commentId: string, body: string) => Promise<void>;
+  onDelete: (commentId: string) => void;
   canInteract: boolean;
   depth: number;
   currentUserId?: string;
   index?: number;
 }
 
-/** Depth colors for left rail — cycles through semantic colors */
-const DEPTH_COLORS = [
-  'border-black',
-  'border-accent',
-  'border-danger',
-  'border-warning',
-  'border-highlight',
-];
-
-function CommentItem({
+function DiscussionCommentItem({
   node,
   onVote,
   onReply,
@@ -109,7 +102,7 @@ function CommentItem({
   depth,
   currentUserId,
   index = 0,
-}: CommentItemProps) {
+}: DiscussionCommentItemProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -121,11 +114,10 @@ function CommentItem({
   const railColor = DEPTH_COLORS[depth % DEPTH_COLORS.length];
   const canModify = currentUserId === node.userId && !node.isDeleted;
 
-  // Clicking the active arrow again clears the vote (0), matching Reddit.
   const cast = (dir: 1 | -1) => onVote(node.id, node.myVote === dir ? 0 : dir);
 
   const handleSaveEdit = async () => {
-    if (!editBody.trim() || !onEdit) return;
+    if (!editBody.trim()) return;
     await onEdit(node.id, editBody.trim());
     setEditing(false);
   };
@@ -139,7 +131,6 @@ function CommentItem({
       transition={{ duration: 0.4, ease: EASE, delay: Math.min(index * 0.04, 0.3) }}
       className="relative"
     >
-      {/* Depth rail indicator */}
       {depth > 0 && (
         <motion.div
           aria-hidden
@@ -160,28 +151,17 @@ function CommentItem({
         ].join(' ')}
       >
         <div className="flex gap-3 p-3">
-          {/* ── Vote column ── */}
+          {/* Vote column */}
           <div className="flex shrink-0 flex-col items-center gap-1">
-            <motion.button
-              type="button"
+            <VoteArrow
+              direction={1}
+              active={node.myVote === 1}
+              activeBg="bg-pink-accent text-black"
+              hoverBg="hover:bg-pink-accent/40"
               disabled={!canInteract || node.isDeleted}
               onClick={() => cast(1)}
-              aria-label="Upvote"
-              aria-pressed={node.myVote === 1}
-              whileHover={!canInteract || node.isDeleted || reduce ? undefined : { scale: 1.08 }}
-              whileTap={!canInteract || node.isDeleted ? undefined : { scale: 0.92 }}
-              transition={{ duration: 0.2, ease: EASE }}
-              className={[
-                'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-                'hover:-translate-y-0.5 hover:shadow-hard-sm',
-                'disabled:cursor-not-allowed disabled:opacity-40',
-                node.myVote === 1
-                  ? 'bg-accent text-accent-foreground shadow-hard-sm'
-                  : 'bg-card hover:bg-accent/30',
-              ].join(' ')}
-            >
-              <ArrowUp size={14} strokeWidth={2.5} aria-hidden="true" />
-            </motion.button>
+              ariaLabel="Upvote"
+            />
 
             <motion.span
               key={score}
@@ -190,38 +170,25 @@ function CommentItem({
               transition={{ type: 'spring', damping: 14, stiffness: 280 }}
               className={[
                 'text-label-small font-bold tabular-nums',
-                score > 0 ? 'text-foreground' : score < 0 ? 'text-danger' : 'text-muted-foreground',
+                score > 0 ? 'text-real' : score < 0 ? 'text-red' : 'text-muted-foreground',
               ].join(' ')}
-              aria-label={`Score ${score}`}
             >
               {score}
             </motion.span>
 
-            <motion.button
-              type="button"
+            <VoteArrow
+              direction={-1}
+              active={node.myVote === -1}
+              activeBg="bg-red text-white"
+              hoverBg="hover:bg-red/20"
               disabled={!canInteract || node.isDeleted}
               onClick={() => cast(-1)}
-              aria-label="Downvote"
-              aria-pressed={node.myVote === -1}
-              whileHover={!canInteract || node.isDeleted || reduce ? undefined : { scale: 1.08 }}
-              whileTap={!canInteract || node.isDeleted ? undefined : { scale: 0.92 }}
-              transition={{ duration: 0.2, ease: EASE }}
-              className={[
-                'grid size-8 place-items-center rounded-md border-2 border-black transition-all',
-                'hover:-translate-y-0.5 hover:shadow-hard-sm',
-                'disabled:cursor-not-allowed disabled:opacity-40',
-                node.myVote === -1
-                  ? 'bg-danger text-danger-foreground shadow-hard-sm'
-                  : 'bg-card hover:bg-danger/25',
-              ].join(' ')}
-            >
-              <ArrowDown size={14} strokeWidth={2.5} aria-hidden="true" />
-            </motion.button>
+              ariaLabel="Downvote"
+            />
           </div>
 
-          {/* ── Body column ── */}
+          {/* Body column */}
           <div className="min-w-0 flex-1">
-            {/* Author line */}
             <div className="flex flex-wrap items-center gap-2">
               {!node.isDeleted ? (
                 <>
@@ -261,7 +228,6 @@ function CommentItem({
               )}
             </div>
 
-            {/* Comment body */}
             {editing ? (
               <motion.div
                 initial={reduce ? false : { opacity: 0, y: 6, height: 0 }}
@@ -301,22 +267,21 @@ function CommentItem({
                   </motion.button>
                 </div>
               </motion.div>
+            ) : node.isDeleted ? (
+              <p className="mt-2 text-label italic text-muted-foreground">
+                [This comment has been deleted]
+              </p>
             ) : (
-              <motion.p
+              <motion.div
                 initial={reduce ? false : { opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: EASE, delay: 0.05 }}
-                className={[
-                  'mt-2 text-label leading-relaxed',
-                  node.isDeleted ? 'text-muted-foreground italic' : 'text-foreground/90',
-                ].join(' ')}
+                className="mt-2 text-label leading-relaxed text-foreground/90 discussion-body"
                 style={{ overflowWrap: 'anywhere' }}
-              >
-                {node.isDeleted ? '[This comment has been deleted]' : node.body}
-              </motion.p>
+                dangerouslySetInnerHTML={{ __html: node.body }}
+              />
             )}
 
-            {/* Action buttons */}
             {canInteract && !node.isDeleted && (
               <div className="mt-2 flex items-center gap-3">
                 <motion.button
@@ -328,8 +293,8 @@ function CommentItem({
                   className={[
                     'inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all',
                     replying
-                      ? 'bg-accent text-accent-foreground shadow-hard-sm'
-                      : 'bg-card hover:-translate-y-0.5 hover:bg-accent/30 hover:shadow-hard-sm',
+                      ? 'bg-orange text-black shadow-hard-sm'
+                      : 'bg-card hover:-translate-y-0.5 hover:bg-orange/30 hover:shadow-hard-sm',
                   ].join(' ')}
                 >
                   <motion.span
@@ -357,7 +322,7 @@ function CommentItem({
                     </motion.button>
                     <motion.button
                       type="button"
-                      onClick={() => onDelete?.(node.id)}
+                      onClick={() => onDelete(node.id)}
                       whileHover={reduce ? undefined : { scale: 1.06 }}
                       whileTap={{ scale: 0.94 }}
                       transition={{ duration: 0.2, ease: EASE }}
@@ -369,7 +334,6 @@ function CommentItem({
                   </>
                 )}
 
-                {/* Collapse toggle */}
                 {hasKids && (
                   <motion.button
                     type="button"
@@ -380,9 +344,7 @@ function CommentItem({
                     aria-expanded={!collapsed}
                     className={[
                       'inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all',
-                      collapsed
-                        ? 'bg-card hover:bg-muted'
-                        : 'bg-muted hover:bg-muted/80',
+                      collapsed ? 'bg-card hover:bg-muted' : 'bg-orange/20 hover:bg-orange/35',
                     ].join(' ')}
                   >
                     <AnimatePresence mode="wait" initial={false}>
@@ -409,7 +371,7 @@ function CommentItem({
           </div>
         </div>
 
-        {/* ── Reply composer ── */}
+        {/* Reply composer */}
         <AnimatePresence initial={false}>
           {replying && (
             <motion.div
@@ -435,7 +397,7 @@ function CommentItem({
         </AnimatePresence>
       </motion.div>
 
-      {/* ── Children: indented with visual connection ── */}
+      {/* Children */}
       <AnimatePresence initial={false}>
         {hasKids && !collapsed && (
           <motion.div
@@ -446,16 +408,13 @@ function CommentItem({
             className="overflow-hidden"
           >
             <ul
-              className={[
-                'mt-3 space-y-3 border-l-2 pl-4',
-                railColor,
-              ].join(' ')}
+              className={['mt-3 space-y-3 border-l-2 pl-4', railColor].join(' ')}
               style={{ borderLeftWidth: '3px' }}
               role="list"
             >
               <AnimatePresence initial={false}>
                 {node.children.map((child, i) => (
-                  <CommentItem
+                  <DiscussionCommentItem
                     key={child.id}
                     node={child}
                     onVote={onVote}
