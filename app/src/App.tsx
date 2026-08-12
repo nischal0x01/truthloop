@@ -41,7 +41,7 @@ import { Discussions } from '@/pages/Discussions';
 /* ── Landing (marketing) ── */
 
 const Landing = () => (
-  <div className="min-h-screen bg-background text-foreground">
+  <div className="grain-overlay min-h-screen bg-background text-foreground">
     <Nav />
     <main>
       <Hero />

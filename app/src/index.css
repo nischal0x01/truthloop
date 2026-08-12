@@ -254,6 +254,19 @@
   .shadow-hard-sm {
     box-shadow: 4px 4px 0 0 var(--color-black);
   }
+
+  /* Fixed film-grain overlay — adds editorial paper feel. Applied to a
+     fixed pointer-events-none layer so it never reflows on scroll. */
+  .grain-overlay::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+    opacity: 0.04;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.9'/></svg>");
+  }
   .shadow-hard {
     box-shadow: 6px 6px 0 0 var(--color-black);
   }
