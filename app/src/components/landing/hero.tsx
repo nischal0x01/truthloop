@@ -7,8 +7,11 @@
  *     with a staggered fade-up + blur (spring-physics curve).
  *   - CTAs use "button-in-button" trailing arrow that translates + scales on hover.
  *   - Floating glass claim-card mockup on the right previews the product.
+ *   - The claim card cycles through 4 different claims every ~3.6s,
+ *     using AnimatePresence with directional slide + fade.
  */
-import { motion, useReducedMotion } from 'motion/react';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 
@@ -40,6 +43,178 @@ function WordReveal({
         </motion.span>
       ))}
     </span>
+  );
+}
+
+/**
+ * Cycling claim carousel — 4 rotating claims, auto-advances every 3.6s,
+ * pauses on hover. Each slide enters with directional slide + fade.
+ */
+type Claim = {
+  text: string;
+  verdict: string;
+  verdictColor: 'red' | 'green' | 'orange' | 'yellow';
+  chipColor: 'red' | 'yellow' | 'orange';
+  category: string;
+  realPct: number;
+};
+
+const CLAIMS: Claim[] = [
+  {
+    text: '“A new study found that 87% of brain cells regenerate overnight when you sleep past midnight.”',
+    verdict: 'Manipulated stat · 96% voted fake',
+    verdictColor: 'red',
+    chipColor: 'red',
+    category: 'Health',
+    realPct: 4,
+  },
+  {
+    text: '“NASA confirmed a second moon will enter Earth’s orbit by next Friday — visible to the naked eye.”',
+    verdict: 'Fabricated · 99% voted fake',
+    verdictColor: 'red',
+    chipColor: 'yellow',
+    category: 'Science',
+    realPct: 1,
+  },
+  {
+    text: '“WHO releases new salt-intake guidelines for adults aged 40 to 65.”',
+    verdict: 'Verified · 91% voted real',
+    verdictColor: 'green',
+    chipColor: 'orange',
+    category: 'Health',
+    realPct: 91,
+  },
+  {
+    text: '“Einstein reportedly said ‘insanity is doing the same thing over and over’ — attribution debunked.”',
+    verdict: 'Misattributed quote · 88% caught it',
+    verdictColor: 'orange',
+    chipColor: 'red',
+    category: 'Quotes',
+    realPct: 12,
+  },
+];
+
+const VERDICT_COLOR_CLASSES: Record<Claim['verdictColor'], string> = {
+  red: 'text-fake',
+  green: 'text-real',
+  orange: 'text-fake-dark',
+  yellow: 'text-fake',
+};
+
+const CHIP_BG: Record<Claim['chipColor'], string> = {
+  red: 'bg-red',
+  yellow: 'bg-yellow',
+  orange: 'bg-orange',
+};
+
+function ClaimCarousel() {
+  const reduce = useReducedMotion();
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [direction, setDirection] = useState(1);
+
+  useEffect(() => {
+    if (reduce || paused) return;
+    const id = setInterval(() => {
+      setDirection(1);
+      setIndex((i) => (i + 1) % CLAIMS.length);
+    }, 3600);
+    return () => clearInterval(id);
+  }, [reduce, paused]);
+
+  const claim = CLAIMS[index];
+
+  const goTo = (i: number) => {
+    setDirection(i > index ? 1 : -1);
+    setIndex(i);
+  };
+
+  return (
+    <div
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      className="relative"
+    >
+      {/* Card stack: ghost layer + active animated card */}
+      <div className="rounded-4xl border-2 border-black bg-black/5 p-1.5 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.18)]">
+        <div className="relative overflow-hidden rounded-[1.625rem] border-2 border-black bg-card">
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.article
+              key={index}
+              custom={direction}
+              initial={{ opacity: 0, x: direction * 40, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, x: -direction * 40, filter: 'blur(8px)' }}
+              transition={{ duration: 0.6, ease: EASE }}
+            >
+              <header className="flex items-center justify-between border-b-2 border-black px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block h-2.5 w-2.5 rounded-full ${CHIP_BG[claim.chipColor]} border-2 border-black`} />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-foreground">
+                    Claim · {claim.category}
+                  </span>
+                </div>
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60">
+                  {String(index + 1).padStart(2, '0')} / {String(CLAIMS.length).padStart(2, '0')}
+                </span>
+              </header>
+
+              <div className="p-6">
+                <p className="font-display text-heading-3 text-foreground">
+                  &ldquo;{claim.text}&rdquo;
+                </p>
+
+                {/* Vote distribution bar */}
+                <div className="mt-5">
+                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <span className="text-real">{claim.realPct}% Real</span>
+                    <span className="text-fake">{100 - claim.realPct}% Fake</span>
+                  </div>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full border-2 border-black bg-card">
+                    <motion.div
+                      key={`bar-${index}`}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${claim.realPct}%` }}
+                      transition={{ duration: 1.1, ease: EASE, delay: 0.2 }}
+                      className="h-full rounded-full bg-real"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 flex items-center justify-between rounded-xl border-2 border-black bg-yellow/40 px-3 py-2 text-[11px] font-medium">
+                  <span className="uppercase tracking-[0.2em] text-foreground/80">Verdict</span>
+                  <span className={`font-semibold ${VERDICT_COLOR_CLASSES[claim.verdictColor]}`}>
+                    {claim.verdict}
+                  </span>
+                </div>
+              </div>
+            </motion.article>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Dot indicators */}
+      <div className="mt-5 flex items-center justify-center gap-2">
+        {CLAIMS.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => goTo(i)}
+            aria-label={`Show claim ${i + 1}`}
+            className="group/dot relative h-2 rounded-full border-2 border-black bg-card transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-yellow"
+            style={{ width: i === index ? 28 : 12 }}
+          >
+            {i === index && (
+              <motion.span
+                layoutId="active-dot"
+                className="absolute inset-0 rounded-full bg-pink-accent"
+                transition={{ duration: 0.5, ease: EASE }}
+              />
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -242,50 +417,8 @@ export function Hero() {
               transition={{ duration: 1.1, ease: EASE, delay: 0.7 }}
               className="absolute inset-x-8 top-2 -z-10 h-70 rounded-2xl border-2 border-black bg-yellow shadow-hard"
             />
-            {/* Primary claim card — Double-Bezel (outer shell + inner core) */}
-            <div className="rounded-4xl border-2 border-black bg-black/5 p-1.5 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.18)]">
-              <article className="rounded-[1.625rem] border-2 border-black bg-card">
-                <header className="flex items-center justify-between border-b-2 border-black px-5 py-4">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-red border-2 border-black" />
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-foreground">
-                      Claim · Trending
-                    </span>
-                  </div>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60">
-                    03 / 12
-                  </span>
-                </header>
-
-                <div className="p-6">
-                  <p className="font-display text-heading-3 text-foreground">
-                    &ldquo;A new study found that 87% of brain cells regenerate overnight when you sleep past midnight.&rdquo;
-                  </p>
-
-                  <div className="mt-6 grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      className="group/btn flex h-14 items-center justify-center gap-2 rounded-xl border-2 border-black bg-real text-white text-label font-semibold shadow-hard-sm transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 hover:shadow-hard active:translate-y-0 active:shadow-hard-sm"
-                    >
-                      Real
-                      <span aria-hidden className="font-bold">✓</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="group/btn flex h-14 items-center justify-center gap-2 rounded-xl border-2 border-black bg-fake text-white text-label font-semibold shadow-hard-sm transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 hover:shadow-hard active:translate-y-0 active:shadow-hard-sm"
-                    >
-                      Fake
-                      <span aria-hidden className="font-bold">✕</span>
-                    </button>
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between rounded-xl border-2 border-black bg-yellow/40 px-3 py-2 text-[11px] font-medium">
-                    <span className="uppercase tracking-[0.2em] text-foreground/80">Verdict</span>
-                    <span className="font-semibold text-fake">Manipulated stat · 96% voted fake</span>
-                  </div>
-                </div>
-              </article>
-            </div>
+            {/* Cycling claim carousel (replaces static card) */}
+            <ClaimCarousel />
 
             {/* Floating chip — AI insight */}
             <motion.div
