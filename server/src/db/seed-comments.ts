@@ -11,6 +11,7 @@
  * have no googleId / passwordHash, so they can never be signed into. Real
  * users and the demo account are left untouched.
  */
+import 'dotenv/config';
 import { eq, sql } from 'drizzle-orm';
 import { db, schema } from './index';
 
