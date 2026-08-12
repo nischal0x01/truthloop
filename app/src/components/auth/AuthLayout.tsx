@@ -26,7 +26,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  ShieldCheck,
   Vote,
   MessagesSquare,
   Radar,
@@ -339,9 +338,39 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
       >
+        {/* Ambient glow orbs (decorative; behind content) */}
+        <motion.div
+          aria-hidden
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.8, ease: EASE }}
+          className="auth-brand__orb auth-brand__orb--pink"
+        />
+        <motion.div
+          aria-hidden
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.8, ease: EASE, delay: 0.3 }}
+          className="auth-brand__orb auth-brand__orb--yellow"
+        />
+
         <Link to="/" className="auth-brand__wordmark">
-          <ShieldCheck size={26} strokeWidth={2} />
-          <span>TruthLoop</span>
+          {/* Brand mark — Double-Bezel pill */}
+          <motion.span
+            aria-hidden
+            initial={{ rotate: -8, scale: 0.9, opacity: 0 }}
+            animate={{ rotate: 0, scale: 1, opacity: 1 }}
+            transition={{ duration: 0.8, ease: EASE, delay: 0.1 }}
+            whileHover={{ rotate: 6, scale: 1.08 }}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border-2 border-black bg-pink-accent shadow-hard-sm"
+          >
+            <span className="font-display text-[15px] font-bold leading-none text-black">T</span>
+            <span className="absolute -right-1 -top-1 inline-block h-2.5 w-2.5 rounded-full border-2 border-black bg-yellow" />
+          </motion.span>
+          <span>
+            <span>Truth</span>
+            <span style={{ color: '#ff90e8' }}>Loop</span>
+          </span>
         </Link>
 
         <div className="auth-brand__showcase">
@@ -455,10 +484,43 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           align-items: center;
           gap: 10px;
           font-size: 19px;
-          font-weight: 500;
+          font-weight: 700;
           color: #ffffff;
           text-decoration: none;
           letter-spacing: -0.4px;
+          z-index: 2;
+        }
+
+        /* Ambient orbs — decorative, sit behind content */
+        .auth-brand__orb {
+          position: absolute;
+          border-radius: 9999px;
+          pointer-events: none;
+          filter: blur(60px);
+          z-index: 0;
+        }
+
+        .auth-brand__orb--pink {
+          top: -120px;
+          right: -80px;
+          width: 320px;
+          height: 320px;
+          background: radial-gradient(circle at center, rgba(255, 144, 232, 0.55) 0%, rgba(255, 144, 232, 0) 70%);
+          animation: authOrbDrift 14s ease-in-out infinite;
+        }
+
+        .auth-brand__orb--yellow {
+          bottom: -100px;
+          left: -60px;
+          width: 280px;
+          height: 280px;
+          background: radial-gradient(circle at center, rgba(255, 201, 0, 0.45) 0%, rgba(255, 201, 0, 0) 70%);
+          animation: authOrbDrift 18s ease-in-out infinite reverse;
+        }
+
+        @keyframes authOrbDrift {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(20px, -30px) scale(1.08); }
         }
 
         /* Showcase is vertically centred in the leftover space */
