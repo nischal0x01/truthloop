@@ -4,8 +4,9 @@
  * No auth required.
  */
 import { Link } from 'react-router-dom';
-import { Trophy, Flame, Medal } from 'lucide-react';
+import { Trophy, Flame, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { UserAvatar } from '@/components/auth/UserAvatar';
 
 /* ── Dummy preview data ── */
 const previewData = [
@@ -14,23 +15,6 @@ const previewData = [
   { rank: 3, name: 'Aisha P.', points: 3980, streak: '6 days' },
 ];
 
-/* Podium display order: 2nd, 1st, 3rd — classic podium arrangement */
-const PODIUM_ORDER = [1, 0, 2];
-const MAX_PODIUM_HEIGHT = 200; // px, tallest bar (rank 1)
-const MIN_PODIUM_HEIGHT = 90; // px, floor so short bars stay legible
-
-const maxPoints = Math.max(...previewData.map((d) => d.points));
-
-function podiumHeight(points) {
-  const ratio = points / maxPoints;
-  return Math.round(MIN_PODIUM_HEIGHT + ratio * (MAX_PODIUM_HEIGHT - MIN_PODIUM_HEIGHT));
-}
-
-const rankStyles = {
-  1: { bar: 'bg-yellow', dot: 'bg-yellow', width: 'w-24' },
-  2: { bar: 'bg-accent/20', dot: 'bg-accent', width: 'w-20' },
-  3: { bar: 'bg-accent/10', dot: 'bg-accent/50', width: 'w-20' },
-};
 
 export function LeaderboardPreview() {
   return (
@@ -103,35 +87,48 @@ export function LeaderboardPreview() {
             </div>
           </div>
 
-          {/* Right: Podium visual, heights proportional to points */}
-          <div
-            className="hidden md:flex flex-1 items-end justify-center gap-4"
-            style={{ minHeight: MAX_PODIUM_HEIGHT + 56 }}
-          >
-            {PODIUM_ORDER.map((i) => {
-              const entry = previewData[i];
-              const styles = rankStyles[entry.rank];
-              const height = podiumHeight(entry.points);
-              return (
-                <div key={entry.rank} className="flex flex-col items-center gap-2">
-                  <div
-                    className={`flex flex-col items-center justify-start gap-1.5 pt-3 border-2 border-black rounded-t-lg shadow-hard ${styles.width} ${styles.bar}`}
-                    style={{ height }}
-                  >
-                    {entry.rank === 1 ? (
-                      <Trophy size={20} className="text-foreground" />
-                    ) : (
-                      <Medal size={18} className="text-foreground/70" />
+          {/* Right: Recent Activity Feed */}
+          <div className="hidden md:flex flex-1 max-w-xs">
+            <div className="rounded-lg border-2 border-black bg-card p-5 shadow-hard w-full">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock size={18} className="text-accent" />
+                <h3 className="font-display text-heading-3 font-semibold">Recent Activity</h3>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { user: 'Priya S.', action: 'voted on', target: 'Climate Claim', correct: true, time: '2m ago' },
+                  { user: 'Marco R.', action: 'voted on', target: 'Tech News', correct: false, time: '5m ago' },
+                  { user: 'Aisha P.', action: 'voted on', target: 'Health Tip', correct: true, time: '8m ago' },
+                  { user: 'James C.', action: 'earned badge', target: '5 Day Streak', correct: null, time: '12m ago' },
+                ].map((activity, i) => (
+                  <div key={i} className="flex items-start gap-3 text-label-small">
+                    <UserAvatar
+                      src={null}
+                      name={activity.user}
+                      size={24}
+                      className="border border-black shrink-0"
+                      fallbackClassName="bg-muted text-foreground text-[10px]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="leading-tight">
+                        <span className="font-semibold">{activity.user}</span>{' '}
+                        {activity.action}{' '}
+                        <span className="font-medium">{activity.target}</span>
+                      </p>
+                      <p className="text-muted-foreground text-[10px]">{activity.time}</p>
+                    </div>
+                    {activity.correct !== null && (
+                      <span className={[
+                        'size-5 rounded-full flex items-center justify-center border text-[10px]',
+                        activity.correct ? 'bg-real/20 border-real text-real' : 'bg-fake/20 border-fake text-fake'
+                      ].join(' ')}>
+                        {activity.correct ? '✓' : '✕'}
+                      </span>
                     )}
-                    <span className="text-label font-bold">#{entry.rank}</span>
                   </div>
-                  <span className="text-label-small font-semibold">
-                    {entry.points.toLocaleString()}
-                  </span>
-                  <div className={`w-2.5 h-2.5 border-2 border-black rounded-full ${styles.dot}`} />
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
