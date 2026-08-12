@@ -13,7 +13,9 @@
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx src/db/reset.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:seed:comments": "tsx src/db/seed-comments.ts"
+    "db:seed:comments": "tsx src/db/seed-comments.ts",
+    "migrate:prod": "tsx scripts/migrate-prod.ts",
+    "migrate:prod:reset": "tsx scripts/migrate-prod.ts --reset --yes"
   },
   "dependencies": {
     "@types/multer": "^2.2.0",
