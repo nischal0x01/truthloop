@@ -492,7 +492,7 @@ function PostDetail({
       {/* Comment thread */}
       {tree.length > 0 && (
         <div className="mt-6">
-          <p className="mb-3 text-label-small font-bold uppercase tracking-wider text-foreground">
+          <p className="mb-3 text-label-small font-bold uppercase tracking-wider text-dark-panel">
             {countDiscussionComments(tree)} {countDiscussionComments(tree) === 1 ? 'comment' : 'comments'}
           </p>
           <DiscussionCommentThread
