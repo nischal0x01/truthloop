@@ -40,7 +40,7 @@ export const discussions = pgTable(
     index('idx_discussions_user').on(t.userId),
     index('idx_discussions_created').on(t.createdAt.desc()),
     check('discussions_title_length', sql`char_length(${t.title}) <= 300 AND char_length(${t.title}) > 0`),
-    check('discussions_body_length', sql`char_length(${t.body}) <= 2000 AND char_length(${t.body}) > 0`),
+    check('discussions_body_length', sql`char_length(${t.body}) <= 500000 AND char_length(${t.body}) > 0`),
   ]
 );
 
@@ -95,7 +95,7 @@ export const discussionComments = pgTable(
     index('idx_discussion_comments_user').on(t.userId),
     check(
       'discussion_comments_body_length',
-      sql`char_length(${t.body}) <= 2000 AND char_length(${t.body}) > 0`
+      sql`char_length(${t.body}) <= 500000 AND char_length(${t.body}) > 0`
     ),
   ]
 );

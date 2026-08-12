@@ -71,13 +71,18 @@ export function CommentComposer({
         />
 
         <div className="flex items-center justify-between gap-3 border-t-2 border-black px-3 py-2">
-          <span
-            className={[
-              'text-[11px] tabular-nums',
-              tooLong ? 'font-semibold text-danger' : 'text-muted-foreground',
-            ].join(' ')}
-          >
-            {trimmed.length}/{MAX_LEN}
+          <span className="flex items-center gap-2">
+            <span
+              className={[
+                'text-[11px] tabular-nums',
+                tooLong ? 'font-semibold text-danger' : 'text-muted-foreground',
+              ].join(' ')}
+            >
+              {trimmed.length}/{MAX_LEN}
+            </span>
+            <span className="text-[11px] text-muted-foreground hidden sm:inline">
+              ⌘+Enter to post
+            </span>
           </span>
 
           <button

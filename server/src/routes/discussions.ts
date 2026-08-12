@@ -40,7 +40,7 @@ const listQuerySchema = z.object({
 
 const createPostSchema = z.object({
   title: z.string().trim().min(1, 'Title cannot be empty.').max(300),
-  body: z.string().trim().min(1, 'Body cannot be empty.').max(2000),
+  body: z.string().trim().min(1, 'Body cannot be empty.').max(500_000),
   imageUrl: z.string().url().nullable().optional(),
 });
 
@@ -50,7 +50,7 @@ const voteSchema = z.object({
 
 const createCommentSchema = z.object({
   parentCommentId: z.string().uuid().nullish(),
-  body: z.string().trim().min(1, 'Comment cannot be empty.').max(2000),
+  body: z.string().trim().min(1, 'Comment cannot be empty.').max(500_000),
 });
 
 /* ── GET /api/discussions ─────────────────────────────────────────────── */

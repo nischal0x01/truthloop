@@ -5,7 +5,7 @@
  * Uses pure SVG with CSS animations — no chart library required.
  *
  * Design: Gumroad hard-edge aesthetic — sharp segments, no blur,
- * uses brand colors (yellow/highlight for Real, red/danger for Fake).
+ * uses brand colors (green for Real, red for Fake) matching VoteButtons.
  */
 
 import { motion } from 'motion/react';
@@ -66,13 +66,13 @@ export function VoteDistributionChart({
             strokeWidth="12"
           />
 
-          {/* Real (yellow/highlight) segment */}
+          {/* Real (green) segment */}
           <motion.circle
             cx={CENTER}
             cy={CENTER}
             r={RADIUS}
             fill="none"
-            stroke="#f1f333"
+            stroke="#22c55e"
             strokeWidth="12"
             strokeDasharray={`${realDash - GAP / 2} ${CIRCUMFERENCE}`}
             strokeDashoffset={-realOffset}
@@ -115,7 +115,7 @@ export function VoteDistributionChart({
       {/* Legend */}
       <div className="flex gap-6">
         <LegendItem
-          color="#f1f333"
+          color="#22c55e"
           borderColor="#000"
           label="Real"
           count={realCount}

@@ -1,6 +1,6 @@
 /**
  * RichTextEditor — Tiptap-based rich text editor for discussions.
- * Supports bold, italic, bullet lists, links, and image embedding.
+ * Supports bold, italic, bullet lists, links (inline input), and embedded images (base64).
  */
 
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -8,15 +8,14 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useCallback, useRef, useState } from 'react';
-import { Link2, ImageIcon, Loader2, X } from 'lucide-react';
+import { useCallback, useRef, useState, useEffect } from 'react';
+import { Link2, ImageIcon } from 'lucide-react';
 
 interface RichTextEditorProps {
   content?: string;
   onChange?: (html: string) => void;
   placeholder?: string;
   maxLength?: number;
-  onImageUpload?: (url: string) => void;
   disabled?: boolean;
   className?: string;
 }
@@ -25,24 +24,27 @@ export function RichTextEditor({
   content = '',
   onChange,
   placeholder = 'Write something…',
-  maxLength = 2000,
-  onImageUpload,
+  maxLength = 500_000,
   disabled = false,
   className = '',
 }: RichTextEditorProps) {
-  const [uploading, setUploading] = useState(false);
+  const [linkInputOpen, setLinkInputOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const linkInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
+        link: false, // uses the standalone Link extension below
         heading: false,
         codeBlock: false,
         blockquote: false,
         horizontalRule: false,
       }),
       Image.configure({
-        HTMLAttributes: { class: 'max-w-full rounded-lg border-2 border-black' },
+        HTMLAttributes: { class: 'max-w-full rounded-lg border-2 border-black discussion-img' },
       }),
       Link.configure({
         openOnClick: false,
@@ -57,57 +59,58 @@ export function RichTextEditor({
     },
   });
 
-  const handleImageUpload = useCallback(async (file: File) => {
-    if (!file) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const response = await fetch('/api/upload/image', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error('Upload failed');
-
-      const data = await response.json();
-      editor?.chain().focus().setImage({ src: data.url }).run();
-      onImageUpload?.(data.url);
-    } catch (err) {
-      console.error('Image upload failed:', err);
-    } finally {
-      setUploading(false);
+  // Focus link input when link popover opens
+  useEffect(() => {
+    if (linkInputOpen) {
+      setTimeout(() => linkInputRef.current?.focus(), 50);
     }
-  }, [editor, onImageUpload]);
+  }, [linkInputOpen]);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleImageUpload(file);
-    e.target.value = '';
-  }, [handleImageUpload]);
+  const handleImageUpload = useCallback(
+    (file: File) => {
+      if (!editor || !file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        editor.chain().focus().setImage({ src: dataUrl }).run();
+        onChange?.(editor.getHTML());
+      };
+      reader.readAsDataURL(file);
+    },
+    [editor, onChange]
+  );
 
-  const handleAddLink = useCallback(() => {
-    // Use prompt for simplest UX — select text, click link, enter URL, done
-    const previousUrl = editor?.getAttributes('link').href ?? '';
-    const url = window.prompt('Enter URL:', previousUrl || 'https://');
-    if (url === null) return; // cancelled
-    const trimmed = url.trim();
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleImageUpload(file);
+      e.target.value = '';
+    },
+    [handleImageUpload]
+  );
+
+  const handleApplyLink = useCallback(() => {
+    if (!editor) return;
+    const trimmed = linkUrl.trim();
     if (!trimmed) {
-      editor?.chain().focus().unsetLink().run();
-      return;
+      editor.chain().focus().unsetLink().run();
+    } else {
+      const finalUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+      editor.chain().focus().extendMarkRange('link').setLink({ href: finalUrl }).run();
     }
-    const finalUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
-    editor?.chain().focus().extendMarkRange('link').setLink({ href: finalUrl }).run();
-  }, [editor]);
+    setLinkUrl('');
+    setLinkInputOpen(false);
+  }, [editor, linkUrl]);
 
   const handleRemoveLink = useCallback(() => {
     editor?.chain().focus().unsetLink().run();
+    setLinkUrl('');
+    setLinkInputOpen(false);
   }, [editor]);
 
   if (!editor) return null;
 
-  const charCount = editor.storage.characterCount?.characters?.() ?? editor.getText().length;
+  const charCount = editor.getText().length;
 
   return (
     <div className={`rounded-lg border-2 border-black bg-card ${className}`}>
@@ -150,50 +153,77 @@ export function RichTextEditor({
           </svg>
         </ToolbarButton>
 
-        {/* Link — click to add/edit link */}
-        <ToolbarButton
-          onClick={handleAddLink}
-          active={editor.isActive('link')}
-          disabled={disabled}
-          title={editor.isActive('link') ? 'Edit Link' : 'Add Link'}
-        >
-          <Link2 size={14} aria-hidden="true" />
-        </ToolbarButton>
-        {editor.isActive('link') && (
+        {/* Link — inline input in toolbar */}
+        <div className="relative flex items-center gap-1">
           <ToolbarButton
-            onClick={handleRemoveLink}
-            active={false}
+            onClick={() => {
+              if (editor.isActive('link')) {
+                // Already has link — open input with existing href
+                setLinkUrl(editor.getAttributes('link').href || '');
+              }
+              setLinkInputOpen(!linkInputOpen);
+            }}
+            active={editor.isActive('link') || linkInputOpen}
             disabled={disabled}
-            title="Remove Link"
+            title={editor.isActive('link') ? 'Edit Link' : 'Add Link'}
           >
-            <X size={14} aria-hidden="true" />
+            <Link2 size={14} aria-hidden="true" />
           </ToolbarButton>
-        )}
 
-        {/* Image Upload */}
-        <div className="relative">
-          <ToolbarButton
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || uploading}
-            title="Upload Image"
-          >
-            {uploading ? (
-              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <ImageIcon size={14} aria-hidden="true" />
-            )}
-          </ToolbarButton>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
+          {/* Inline link input */}
+          {linkInputOpen && (
+            <div className="flex items-center gap-1">
+              <input
+                ref={linkInputRef}
+                type="url"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://..."
+                className="rounded border-2 border-black bg-card px-2 py-1 text-label-small outline-none focus:ring-2 focus:ring-black w-40"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleApplyLink(); }
+                  if (e.key === 'Escape') { setLinkInputOpen(false); setLinkUrl(''); }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleApplyLink}
+                className="rounded border-2 border-black bg-accent px-2 py-1 text-label-small font-semibold shadow-sm hover:bg-accent/90"
+              >
+                OK
+              </button>
+              {editor.isActive('link') && (
+                <button
+                  type="button"
+                  onClick={handleRemoveLink}
+                  className="rounded border-2 border-black bg-red px-2 py-1 text-label-small font-semibold text-white shadow-sm hover:bg-red/90"
+                  title="Remove link"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
+        {/* Image Upload */}
+        <ToolbarButton
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          title="Insert Image"
+        >
+          <ImageIcon size={14} aria-hidden="true" />
+        </ToolbarButton>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
         <div className="ml-auto flex items-center gap-2">
-          <span className={`text-[11px] tabular-nums ${charCount > maxLength ? 'font-semibold text-danger' : 'text-muted-foreground'}`}>
+          <span className={`text-[11px] tabular-nums ${charCount > maxLength ? 'font-semibold text-red' : 'text-muted-foreground'}`}>
             {charCount}/{maxLength}
           </span>
         </div>
@@ -201,8 +231,9 @@ export function RichTextEditor({
 
       {/* Editor Content */}
       <EditorContent
+        ref={editorContainerRef}
         editor={editor}
-        className="prose-custom px-3 py-2.5 min-h-[100px] max-h-[400px] overflow-y-auto"
+        className="prose-custom px-3 py-2.5 min-h-24 max-h-96 overflow-y-auto"
       />
 
       <style>{`
@@ -234,15 +265,18 @@ export function RichTextEditor({
         .ProseMirror em {
           font-style: italic;
         }
-        .ProseMirror a {
+        .ProseMirror a,
+        .ProseMirror .link {
           color: #ff90e8;
           text-decoration: underline;
         }
-        .ProseMirror img {
+        .ProseMirror img,
+        .ProseMirror .discussion-img {
           max-width: 100%;
           border-radius: 4px;
           border: 2px solid #000;
           margin: 0.5em 0;
+          display: block;
         }
       `}</style>
     </div>

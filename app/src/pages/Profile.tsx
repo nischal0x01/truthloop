@@ -344,7 +344,7 @@ export function Profile() {
             className="bg-accent text-accent-foreground border-2 border-black rounded-lg shadow-hard hover-lift"
             size="lg"
           >
-            <Link to="/">
+            <Link to="/claims">
               <ArrowUpRight size={16} aria-hidden="true" />
               Vote on today's claim
             </Link>

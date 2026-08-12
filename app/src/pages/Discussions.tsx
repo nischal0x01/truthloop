@@ -1,16 +1,20 @@
 /**
  * Discussions — standalone forum page (Reddit-style).
  *
- * Phase 1: Dummy data via dummyDiscussionsApi.
- * Phase 2: Replace dummyDiscussionsApi with discussionsApi (real API).
+ * Two views (URL-based routing):
+ *   - List view: /discussions — all posts, sortable (Hot / New / Top)
+ *   - Detail view: /discussions/:id — single post + nested comment thread
  *
- * Two views:
- *   - List view: all posts, sortable (Hot / New / Top)
- *   - Detail view: single post + nested comment thread
+ * UX improvements:
+ *   - URL-based navigation (bookmarkable, browser back/forward works)
+ *   - Saving a post edit → navigates back to list (main feed)
+ *   - Keyboard shortcuts: Escape to cancel edit / go back
+ *   - Toast notifications for save/delete actions
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowUp,
@@ -25,6 +29,8 @@ import {
   ChevronLeft,
   Pencil,
   Trash2,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
 import { UserAvatar } from '@/components/auth/UserAvatar';
@@ -44,13 +50,90 @@ import {
   type DiscussionVoteValue,
 } from '@/lib/discussions';
 
+/* ── Toast notification system ──────────────────────────────────────────────── */
+
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
+function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className="fixed bottom-6 right-6 z-50 flex flex-col gap-2"
+    >
+      <AnimatePresence>
+        {toasts.map((toast) => (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className={[
+              'flex items-center gap-2 rounded-lg border-2 border-black bg-card px-4 py-3 shadow-hard-sm',
+              toast.type === 'success' ? 'bg-real/20 border-real' : '',
+              toast.type === 'error' ? 'bg-danger/20 border-danger' : '',
+              toast.type === 'info' ? 'bg-accent/20 border-accent' : '',
+            ].join(' ')}
+          >
+            {toast.type === 'success' && <Check size={16} className="text-real" />}
+            {toast.type === 'error' && <AlertCircle size={16} className="text-danger" />}
+            {toast.type === 'info' && <AlertCircle size={16} className="text-accent" />}
+            <span className="text-label font-medium">{toast.message}</span>
+            <button
+              type="button"
+              onClick={() => onDismiss(toast.id)}
+              className="ml-2 rounded p-1 hover:bg-black/10"
+              aria-label="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export function Discussions() {
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [editOnMountId, setEditOnMountId] = useState<string | null>(null);
+  const { id: postIdFromUrl } = useParams<{ id?: string }>();
+  const navigate = useNavigate();
   const [sort, setSort] = useState<SortOrder>('hot');
+  const [editOnMountId, setEditOnMountId] = useState<string | null>(null);
+  const [openComposer, setOpenComposer] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const { user } = useAuth();
+
+  // URL-driven state: selectedPostId comes from URL params
+  const selectedPostId = postIdFromUrl ?? null;
+
+  const showToast = useCallback((message: string, type: Toast['type'] = 'success') => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedPostId) {
+        navigate('/discussions', { replace: true });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPostId, navigate]);
 
   // List query
   const listQuery = useQuery({
@@ -94,18 +177,20 @@ export function Discussions() {
     mutationFn: (input: { title: string; body: string; imageUrl?: string | null }) => discussionsApi.create(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
+      showToast('Discussion posted!');
     },
   });
 
-  // Update post mutation
+  // Update post mutation — navigates back to list on success
   const updatePostMutation = useMutation({
     mutationFn: ({ postId, title, body, imageUrl }: { postId: string; title?: string; body?: string; imageUrl?: string | null }) =>
       discussionsApi.update(postId, { title, body, imageUrl }),
-    onSuccess: (result) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
-      if (selectedPostId === result.post.id) {
-        qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId) });
-      }
+      qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId ?? '') });
+      showToast('Changes saved!');
+      // Navigate back to main feed after saving
+      navigate('/discussions', { replace: true });
     },
   });
 
@@ -114,7 +199,9 @@ export function Discussions() {
     mutationFn: (postId: string) => discussionsApi.delete(postId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
-      setSelectedPostId(null);
+      showToast('Discussion deleted');
+      // Navigate back to main feed
+      navigate('/discussions', { replace: true });
     },
   });
 
@@ -125,6 +212,7 @@ export function Discussions() {
     onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
+      showToast('Comment posted!');
     },
   });
 
@@ -141,8 +229,11 @@ export function Discussions() {
   const updateCommentMutation = useMutation({
     mutationFn: ({ discussionId, commentId, body }: { discussionId: string; commentId: string; body: string }) =>
       discussionsApi.updateComment(discussionId, commentId, body),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
+    onSuccess: () => {
+      if (selectedPostId) {
+        qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId) });
+      }
+      showToast('Comment updated!');
     },
   });
 
@@ -153,6 +244,7 @@ export function Discussions() {
     onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
+      showToast('Comment deleted');
     },
   });
 
@@ -180,10 +272,10 @@ export function Discussions() {
   const handleEditPost = useCallback(
     (post: DiscussionPost) => {
       // Navigate to detail view and open edit mode
-      setSelectedPostId(post.id);
+      navigate(`/discussions/${post.id}`, { replace: true });
       setEditOnMountId(post.id);
     },
-    []
+    [navigate]
   );
 
   const handleDeletePost = useCallback(
@@ -194,6 +286,10 @@ export function Discussions() {
     },
     [deletePostMutation]
   );
+
+  const handleBack = useCallback(() => {
+    navigate('/discussions', { replace: true });
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -216,7 +312,7 @@ export function Discussions() {
             </h1>
           </div>
 
-          {user && <CreatePostButton onCreate={(t, b) => createPostMutation.mutate({ title: t, body: b })} isPending={createPostMutation.isPending} />}
+          {user && <CreatePostButton open={openComposer} onOpenChange={setOpenComposer} onCreate={(t, b) => createPostMutation.mutate({ title: t, body: b })} isPending={createPostMutation.isPending} />}
         </div>
 
         {/* Sort tabs */}
@@ -239,14 +335,14 @@ export function Discussions() {
                   ))}
                 </div>
               ) : listQuery.data?.posts.length === 0 ? (
-                <EmptyState onCreate={() => {/* open composer */}} />
+                <EmptyState onCreate={() => setOpenComposer(true)} />
               ) : (
                 <div className="space-y-4">
                   {listQuery.data?.posts.map((post) => (
                     <PostCard
                       key={post.id}
                       post={post}
-                      onSelect={() => setSelectedPostId(post.id)}
+                      onSelect={() => navigate(`/discussions/${post.id}`, { replace: true })}
                       onVote={(v) => handleVotePost(post.id, v)}
                       isVoting={voteMutation.isPending && voteMutation.variables?.postId === post.id}
                       onEdit={user?.id === post.authorId ? () => handleEditPost(post) : undefined}
@@ -271,7 +367,7 @@ export function Discussions() {
                 <PostDetail
                   post={detailQuery.data.post}
                   comments={detailQuery.data.comments}
-                  onBack={() => setSelectedPostId(null)}
+                  onBack={handleBack}
                   onVotePost={(v) => handleVotePost(detailQuery.data!.post.id, v)}
                   onVoteComment={(commentId, v) => handleVoteComment(commentId, v, detailQuery.data!.post.id)}
                   onReply={(parentId, body) => handleCreateComment(detailQuery.data!.post.id, parentId, body)}
@@ -296,6 +392,9 @@ export function Discussions() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
@@ -746,22 +845,40 @@ function PostDetail({
 /* ── Create post button + modal ────────────────────────────────────────────── */
 
 interface CreatePostButtonProps {
-  onCreate: (title: string, body: string, imageUrl?: string | null) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onCreate: (title: string, body: string) => void;
   isPending: boolean;
 }
 
-function CreatePostButton({ onCreate, isPending }: CreatePostButtonProps) {
-  const [open, setOpen] = useState(false);
+function CreatePostButton({ open: controlledOpen, onOpenChange, onCreate, isPending }: CreatePostButtonProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Focus first input when modal opens; close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    // Focus the title input
+    setTimeout(() => dialogRef.current?.querySelector<HTMLInputElement>('#post-title')?.focus(), 50);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, setOpen]);
 
   const handleSubmit = async () => {
     if (!title.trim() || !body.trim()) return;
-    await onCreate(title.trim(), body.trim(), imageUrl);
+    await onCreate(title.trim(), body.trim());
     setTitle('');
     setBody('');
-    setImageUrl(null);
     setOpen(false);
   };
 
@@ -790,6 +907,7 @@ function CreatePostButton({ onCreate, isPending }: CreatePostButtonProps) {
 
             {/* Modal */}
             <motion.div
+              ref={dialogRef}
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -845,7 +963,6 @@ function CreatePostButton({ onCreate, isPending }: CreatePostButtonProps) {
                       onChange={setBody}
                       placeholder="Share your thoughts, questions, or insights…"
                       maxLength={2000}
-                      onImageUpload={setImageUrl}
                     />
                   </div>
                 </div>

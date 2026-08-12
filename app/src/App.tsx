@@ -112,12 +112,13 @@ function ClaimsRoute({ claimId }: { claimId?: string }) {
   }
 
   // Post-OAuth redirect destination (set by ProtectedRoute before redirecting to signin)
-  const redirectTo = sessionStorage.getItem('authRedirectTo');
-  if (redirectTo) {
-    sessionStorage.removeItem('authRedirectTo');
-    navigate(redirectTo, { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    const redirectTo = sessionStorage.getItem('authRedirectTo');
+    if (redirectTo) {
+      sessionStorage.removeItem('authRedirectTo');
+      navigate(redirectTo, { replace: true });
+    }
+  }, [navigate]);
 
   return <Feed initialSearch={location.search} selectedClaimId={claimId} />;
 }
@@ -176,6 +177,7 @@ const App = () => {
             <Route path="/profile" element={<Profile />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/discussions" element={<Discussions />} />
+            <Route path="/discussions/:id" element={<Discussions />} />
           </Route>
 
           {/* Legacy aliases */}
