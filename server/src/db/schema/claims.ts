@@ -21,7 +21,7 @@ import { verdictEnum } from './enums';
 export const claims = pgTable(
   'claims',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     text: text('text').notNull(),
     verdict: verdictEnum('verdict').notNull(),
     category: text('category').notNull(),
@@ -45,7 +45,7 @@ export const claims = pgTable(
 export const guesses = pgTable(
   'guesses',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

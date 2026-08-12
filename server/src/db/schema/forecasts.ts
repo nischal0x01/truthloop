@@ -19,7 +19,7 @@ import { users } from './users';
 import { severityEnum, forecastVoteEnum, forecastStatusEnum } from './enums';
 
 export const scamForecasts = pgTable('scam_forecasts', {
-  id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   forecastDate: date('forecast_date').notNull().unique(),
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
   generationStatus: forecastStatusEnum('generation_status').notNull().default('success'),
@@ -28,7 +28,7 @@ export const scamForecasts = pgTable('scam_forecasts', {
 export const scamForecastItems = pgTable(
   'scam_forecast_items',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     forecastId: uuid('forecast_id')
       .notNull()
       .references(() => scamForecasts.id, { onDelete: 'cascade' }),

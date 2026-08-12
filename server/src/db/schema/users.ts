@@ -8,7 +8,7 @@ import { sql } from 'drizzle-orm';
 export const users = pgTable(
   'users',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     email: text('email').notNull().unique(),
     displayName: text('display_name').notNull(),
     avatarUrl: text('avatar_url'),

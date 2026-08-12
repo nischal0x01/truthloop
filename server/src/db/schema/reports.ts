@@ -21,7 +21,7 @@ import { claims } from './claims';
 export const weeklyReports = pgTable(
   'weekly_reports',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

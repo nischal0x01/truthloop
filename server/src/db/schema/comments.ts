@@ -24,7 +24,7 @@ import { claims } from './claims';
 export const comments = pgTable(
   'comments',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     claimId: uuid('claim_id')
       .notNull()
       .references(() => claims.id, { onDelete: 'cascade' }),

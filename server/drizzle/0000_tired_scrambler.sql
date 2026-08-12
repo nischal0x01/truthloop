@@ -1,7 +1,7 @@
--- uuid-ossp is required by uuid_generate_v4() defaults below. Aiven's
+-- uuid-ossp is required by gen_random_uuid() defaults below. Aiven's
 -- hosted Postgres does not have this extension enabled by default —
 -- without this line, 0000 fails on every CREATE TABLE with
--- "function uuid_generate_v4() does not exist".
+-- "function gen_random_uuid() does not exist".
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";--> statement-breakpoint
 CREATE TYPE "public"."ai_verdict" AS ENUM('real', 'fake', 'unverified');--> statement-breakpoint
 CREATE TYPE "public"."forecast_status" AS ENUM('success', 'fallback', 'failed');--> statement-breakpoint
@@ -19,7 +19,7 @@ CREATE TABLE "user_settings" (
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"email" text NOT NULL,
 	"display_name" text NOT NULL,
 	"avatar_url" text,
@@ -37,7 +37,7 @@ CREATE TABLE "users" (
 );
 --> statement-breakpoint
 CREATE TABLE "claims" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"text" text NOT NULL,
 	"verdict" "verdict" NOT NULL,
 	"category" text NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE "claims" (
 );
 --> statement-breakpoint
 CREATE TABLE "guesses" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"claim_id" uuid NOT NULL,
 	"user_answer" "verdict" NOT NULL,
@@ -69,7 +69,7 @@ CREATE TABLE "comment_votes" (
 );
 --> statement-breakpoint
 CREATE TABLE "comments" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"claim_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
 	"parent_comment_id" uuid,
@@ -95,7 +95,7 @@ CREATE TABLE "discussion_comment_votes" (
 );
 --> statement-breakpoint
 CREATE TABLE "discussion_comments" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"discussion_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
 	"parent_comment_id" uuid,
@@ -120,7 +120,7 @@ CREATE TABLE "discussion_votes" (
 );
 --> statement-breakpoint
 CREATE TABLE "discussions" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"title" text NOT NULL,
 	"body" text NOT NULL,
@@ -135,7 +135,7 @@ CREATE TABLE "discussions" (
 );
 --> statement-breakpoint
 CREATE TABLE "user_submissions" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"text" text NOT NULL,
 	"ai_verdict" "ai_verdict",
@@ -158,7 +158,7 @@ CREATE TABLE "forecast_votes" (
 );
 --> statement-breakpoint
 CREATE TABLE "scam_forecast_items" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"forecast_id" uuid NOT NULL,
 	"severity" "severity" NOT NULL,
 	"category" text NOT NULL,
@@ -174,7 +174,7 @@ CREATE TABLE "scam_forecast_items" (
 );
 --> statement-breakpoint
 CREATE TABLE "scam_forecasts" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"forecast_date" date NOT NULL,
 	"generated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"generation_status" "forecast_status" DEFAULT 'success' NOT NULL,
@@ -197,7 +197,7 @@ CREATE TABLE "user_badges" (
 );
 --> statement-breakpoint
 CREATE TABLE "notifications" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"type" "notification_type" NOT NULL,
 	"title" text NOT NULL,
@@ -210,7 +210,7 @@ CREATE TABLE "notifications" (
 );
 --> statement-breakpoint
 CREATE TABLE "weekly_reports" (
-	"id" uuid PRIMARY KEY DEFAULT uuid_generate_v4() NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"week_starting" date NOT NULL,
 	"total_guesses" integer DEFAULT 0 NOT NULL,

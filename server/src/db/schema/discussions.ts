@@ -22,7 +22,7 @@ import { users } from './users';
 export const discussions = pgTable(
   'discussions',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -66,7 +66,7 @@ export const discussionVotes = pgTable(
 export const discussionComments = pgTable(
   'discussion_comments',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     discussionId: uuid('discussion_id')
       .notNull()
       .references(() => discussions.id, { onDelete: 'cascade' }),

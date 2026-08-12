@@ -21,7 +21,7 @@ import { aiVerdictEnum } from './enums';
 export const userSubmissions = pgTable(
   'user_submissions',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v4()`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
