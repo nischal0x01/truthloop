@@ -17,6 +17,7 @@ export interface DiscussionPost {
   id: string;
   title: string;
   body: string;
+  imageUrl: string | null;
   authorId: string;
   authorName: string;
   authorAvatarUrl: string | null;
@@ -57,8 +58,14 @@ export const discussionsApi = {
   get: (id: string) =>
     api<{ post: DiscussionPost; comments: DiscussionComment[] }>(`/api/discussions/${id}`),
 
-  create: (input: { title: string; body: string }) =>
+  create: (input: { title: string; body: string; imageUrl?: string | null }) =>
     api<{ post: DiscussionPost }>('/api/discussions', { method: 'POST', body: input }),
+
+  update: (id: string, input: { title?: string; body?: string; imageUrl?: string | null }) =>
+    api<{ post: DiscussionPost }>(`/api/discussions/${id}`, { method: 'PATCH', body: input }),
+
+  delete: (id: string) =>
+    api<void>(`/api/discussions/${id}`, { method: 'DELETE' }),
 
   vote: (id: string, vote: DiscussionVoteValue) =>
     api<{ post: { id: string; upvotes: number; downvotes: number; myVote: DiscussionVoteValue } }>(
@@ -71,6 +78,15 @@ export const discussionsApi = {
       method: 'POST',
       body: { parentCommentId: input.parentCommentId, body: input.body },
     }),
+
+  updateComment: (discussionId: string, commentId: string, body: string) =>
+    api<{ comment: DiscussionComment }>(
+      `/api/discussions/${discussionId}/comments/${commentId}`,
+      { method: 'PATCH', body: { body } }
+    ),
+
+  deleteComment: (discussionId: string, commentId: string) =>
+    api<void>(`/api/discussions/${discussionId}/comments/${commentId}`, { method: 'DELETE' }),
 
   voteComment: (commentId: string, vote: DiscussionVoteValue, discussionId: string) =>
     api<{ comment: { id: string; upvotes: number; downvotes: number; myVote: DiscussionVoteValue } }>(

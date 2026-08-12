@@ -207,4 +207,56 @@ router.post('/:id/vote', requireAuth, async (req, res) => {
   res.json({ comment: result });
 });
 
+/* ── PATCH /api/comments/:id ────────────────────────────────────────── */
+router.patch('/:id', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+  const commentId = z.string().uuid().parse(req.params.id);
+  const { body } = createSchema.omit({ claimId: true, parentCommentId: true }).partial().parse(req.body);
+
+  const [existing] = await db
+    .select({ id: schema.comments.id, userId: schema.comments.userId, createdAt: schema.comments.createdAt })
+    .from(schema.comments)
+    .where(eq(schema.comments.id, commentId))
+    .limit(1);
+
+  if (!existing) throw new AppError(404, 'Comment not found.');
+  if (existing.userId !== userId) throw new AppError(403, 'You can only edit your own comments.');
+
+  // 5-minute edit window
+  const createdAt = new Date(existing.createdAt).getTime();
+  if (Date.now() - createdAt > 5 * 60 * 1000) {
+    throw new AppError(403, 'Edit window has closed (5 minutes).');
+  }
+
+  const [updated] = await db
+    .update(schema.comments)
+    .set({ body, updatedAt: new Date() })
+    .where(and(eq(schema.comments.id, commentId), eq(schema.comments.userId, userId)))
+    .returning();
+
+  res.json({ comment: updated });
+});
+
+/* ── DELETE /api/comments/:id ────────────────────────────────────────── */
+router.delete('/:id', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+  const commentId = z.string().uuid().parse(req.params.id);
+
+  const [existing] = await db
+    .select({ id: schema.comments.id, userId: schema.comments.userId })
+    .from(schema.comments)
+    .where(eq(schema.comments.id, commentId))
+    .limit(1);
+
+  if (!existing) throw new AppError(404, 'Comment not found.');
+  if (existing.userId !== userId) throw new AppError(403, 'You can only delete your own comments.');
+
+  await db
+    .update(schema.comments)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(eq(schema.comments.id, commentId), eq(schema.comments.userId, userId)));
+
+  res.status(204).send();
+});
+
 export default router;

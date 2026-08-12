@@ -46,6 +46,12 @@ export const commentsApi = {
   create: (input: { claimId: string; parentCommentId?: string | null; body: string }) =>
     api<{ comment: Comment }>('/api/comments', { method: 'POST', body: input }),
 
+  update: (commentId: string, body: string) =>
+    api<{ comment: Comment }>(`/api/comments/${commentId}`, { method: 'PATCH', body: { body } }),
+
+  delete: (commentId: string) =>
+    api<void>(`/api/comments/${commentId}`, { method: 'DELETE' }),
+
   vote: (commentId: string, vote: CommentVoteValue) =>
     api<{ comment: { id: string; upvotes: number; downvotes: number; myVote: number } }>(
       `/api/comments/${commentId}/vote`,
