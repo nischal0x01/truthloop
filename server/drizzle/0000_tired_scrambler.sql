@@ -1,3 +1,8 @@
+-- uuid-ossp is required by uuid_generate_v4() defaults below. Aiven's
+-- hosted Postgres does not have this extension enabled by default —
+-- without this line, 0000 fails on every CREATE TABLE with
+-- "function uuid_generate_v4() does not exist".
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";--> statement-breakpoint
 CREATE TYPE "public"."ai_verdict" AS ENUM('real', 'fake', 'unverified');--> statement-breakpoint
 CREATE TYPE "public"."forecast_status" AS ENUM('success', 'fallback', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."forecast_vote" AS ENUM('believe', 'doubt', 'skip');--> statement-breakpoint
