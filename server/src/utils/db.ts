@@ -2,12 +2,39 @@ import { Pool, PoolClient, QueryResult, type QueryResultRow } from 'pg';
 import { config } from '@/config';
 import { logger } from '@/utils/logger';
 
+/**
+ * Whether the pool should open its connection with TLS.
+ *
+ * Aiven / Railway / Render all reject plaintext connections with
+ * SQLSTATE 28000 ("invalid_authorization_specification"). We turn TLS on
+ * for any non-loopback host so local dev pointing at a remote DB works,
+ * while local dev pointing at a local Postgres stays plaintext.
+ *
+ * Override at runtime with `DB_SSL=true` or `DB_SSL=false`.
+ */
+const isLocalHost = (host: string) =>
+  host === 'localhost' || host === '127.0.0.1' || host === '::1';
+
+const useSsl = (): boolean => {
+  const override = process.env.DB_SSL;
+  if (override === 'true') return true;
+  if (override === 'false') return false;
+  return !isLocalHost(config.database.host);
+};
+
 const pool = new Pool({
   host: config.database.host,
   port: config.database.port,
   user: config.database.user,
   password: config.database.password,
   database: config.database.database,
+  // Aiven / Railway / Render all reject plaintext connections with
+  // SQLSTATE 28000 ("invalid_authorization_specification"). The
+  // `useSsl()` helper above decides TLS-on based on host (override
+  // with `DB_SSL=true|false`). We pass the helper's decision into pg;
+  // in TLS mode we skip cert verification because Aiven's CA isn't
+  // always in Node's bundled trust store.
+  ssl: useSsl() ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -81,6 +108,7 @@ export async function connectDb(): Promise<boolean> {
     port: config.database.port,
     database: config.database.database,
     user: config.database.user,
+    ssl: useSsl() ? 'on' : 'off',
   };
   logger.info(target, 'Connecting to database');
   const ok = await healthCheck();
