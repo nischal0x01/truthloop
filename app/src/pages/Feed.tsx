@@ -272,7 +272,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 <motion.div
                   className={[
                     'h-full transition-colors duration-500',
-                    progressPct === 100 ? 'bg-real' : progressPct >= 75 ? 'bg-accent' : progressPct >= 50 ? 'bg-yellow' : 'bg-orange'
+                    progressPct === 100 ? 'bg-real' : progressPct >= 75 ? 'bg-accent' : progressPct >= 50 ? 'bg-orange' : 'bg-orange'
                   ].join(' ')}
                   initial={false}
                   animate={{ width: `${progressPct}%` }}

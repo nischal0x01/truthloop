@@ -285,7 +285,7 @@ function PostCard({ post, onSelect, onVote, isVoting }: PostCardProps) {
       <div className="flex gap-0">
         {/* Vote column */}
         <div
-          className="flex w-14 flex-col items-center gap-1 border-r-2 border-black bg-yellow/10 py-4"
+          className="flex w-14 flex-col items-center gap-1 border-r-2 border-black bg-orange/10 py-4"
           onClick={(e) => e.stopPropagation()}
         >
           <button
@@ -360,7 +360,7 @@ function PostCard({ post, onSelect, onVote, isVoting }: PostCardProps) {
             </div>
 
             {/* Comment count */}
-            <div className="flex items-center gap-1.5 text-label-small font-semibold text-orange">
+            <div className="flex items-center gap-1.5 text-label-small font-semibold text-foreground">
               <MessageCircle size={13} aria-hidden="true" />
               <span>{post.commentCount}</span>
             </div>
@@ -407,7 +407,7 @@ function PostDetail({
       <button
         type="button"
         onClick={onBack}
-        className="mb-4 inline-flex items-center gap-1.5 rounded-lg border-2 border-black bg-yellow px-3 py-1.5 text-label-small font-semibold shadow-hard-sm transition-all hover-lift"
+        className="mb-4 inline-flex items-center gap-1.5 rounded-lg border-2 border-black bg-pink-accent px-3 py-1.5 text-label-small font-semibold shadow-hard-sm transition-all hover-lift"
       >
         <ChevronLeft size={14} aria-hidden="true" />
         Back
@@ -417,7 +417,7 @@ function PostDetail({
       <article className="rounded-lg border-2 border-black bg-card shadow-hard">
         <div className="flex gap-0">
           {/* Vote column */}
-          <div className="flex w-14 flex-col items-center gap-1 border-r-2 border-black bg-yellow/10 py-4">
+          <div className="flex w-14 flex-col items-center gap-1 border-r-2 border-black bg-orange/10 py-4">
             <button
               type="button"
               onClick={() => cast(1)}
@@ -492,7 +492,7 @@ function PostDetail({
       {/* Comment thread */}
       {tree.length > 0 && (
         <div className="mt-6">
-          <p className="mb-3 text-label-small font-bold uppercase tracking-wider text-orange">
+          <p className="mb-3 text-label-small font-bold uppercase tracking-wider text-foreground">
             {countDiscussionComments(tree)} {countDiscussionComments(tree) === 1 ? 'comment' : 'comments'}
           </p>
           <DiscussionCommentThread
@@ -722,8 +722,8 @@ const DEPTH_COLORS = [
   'border-pink-accent',
   'border-orange',
   'border-red',
-  'border-yellow',
   'border-real',
+  'border-pink-accent',
 ];
 
 interface DiscussionCommentThreadProps {
@@ -856,7 +856,7 @@ function DiscussionCommentItem({ node, onVote, onReply, canInteract, depth }: Di
                   <button
                     type="button"
                     onClick={() => setCollapsed((c) => !c)}
-                    className={['inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all', collapsed ? 'bg-card hover:bg-muted' : 'bg-yellow hover:bg-yellow/80'].join(' ')}
+                    className={['inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all', collapsed ? 'bg-card hover:bg-muted' : 'bg-orange/20 hover:bg-orange/35'].join(' ')}
                   >
                     {collapsed ? <Plus size={12} aria-hidden="true" /> : <Minus size={12} aria-hidden="true" />}
                     <span>{collapsed ? 'Show' : 'Hide'} {node.children.length} {node.children.length === 1 ? 'reply' : 'replies'}</span>
