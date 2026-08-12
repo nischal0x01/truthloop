@@ -298,6 +298,9 @@
   .bg-real {
     background-color: var(--color-real);
   }
+  .bg-danger {
+    background-color: var(--color-fake);
+  }
   .bg-real-light {
     background-color: var(--color-real-light);
   }
@@ -308,17 +311,33 @@
     background-color: var(--color-fake-light);
   }
 
+  .text-real {
+    color: var(--color-real);
+  }
+  .text-real-light {
+    color: var(--color-real-light);
+  }
+  .text-real-dark {
+    color: #166534;
+  }
+  .text-danger {
+    color: var(--color-fake);
+  }
+  .text-fake {
+    color: var(--color-fake);
+  }
+  .text-fake-light {
+    color: var(--color-fake-light);
+  }
+  .text-fake-dark {
+    color: #991b1b;
+  }
+
   .text-muted-text {
     color: var(--color-muted-text);
   }
   .text-pink-accent {
     color: var(--color-pink-accent);
-  }
-  .text-real {
-    color: var(--color-real);
-  }
-  .text-fake {
-    color: var(--color-fake);
   }
 
   .border-black {

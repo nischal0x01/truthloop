@@ -318,24 +318,17 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
         role="status"
         aria-live="polite"
       >
-        <div className="flex items-center justify-center gap-2">
-          {isReal ? (
-            <Check size={22} strokeWidth={3} aria-hidden="true" />
+        <p className="text-heading-3 font-semibold tracking-display">
+          {correct ? (
+            <>
+              ✓ Correct! <span className="text-label font-semibold">+10 pts</span>
+            </>
           ) : (
-            <X size={22} strokeWidth={3} aria-hidden="true" />
+            <>
+              ✗ Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
+            </>
           )}
-          <p className="text-heading-3 font-semibold tracking-display">
-            {correct ? (
-              <>
-                Correct! <span className="text-label font-semibold">+10 pts</span>
-              </>
-            ) : (
-              <>
-                Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
-              </>
-            )}
-          </p>
-        </div>
+        </p>
         <p className="mt-1 text-label-small font-semibold uppercase tracking-wider opacity-90">
           You said <strong className="uppercase">{userGuess?.answer}</strong>
         </p>

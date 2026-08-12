@@ -230,9 +230,9 @@ function CompactVerdict({
       role="status"
     >
       {isReal ? (
-        <Check size={14} strokeWidth={3} aria-hidden="true" />
+        <span className="text-real" aria-hidden="true">✓</span>
       ) : (
-        <X size={14} strokeWidth={3} aria-hidden="true" />
+        <span className="text-danger" aria-hidden="true">✗</span>
       )}
       <span>
         You said <strong className="uppercase">{userGuess.answer}</strong> —{' '}
@@ -258,7 +258,7 @@ function VerdictReveal({
   const isReal = claim.verdict === 'real';
   return (
     <div className="space-y-4">
-      {/* Full-width verdict band. Green for Real, Pink for Fake. */}
+      {/* Full-width verdict band. Green for Real, Red for Fake. */}
       <div
         className={[
           'rounded-md border-2 border-black px-5 py-4 text-center',
@@ -269,24 +269,17 @@ function VerdictReveal({
         role="status"
         aria-live="polite"
       >
-        <div className="flex items-center justify-center gap-2">
-          {isReal ? (
-            <Check size={20} strokeWidth={3} aria-hidden="true" />
+        <p className="text-heading-3 font-semibold tracking-display">
+          {isCorrect ? (
+            <>
+              ✓ Correct! <span className="text-label font-semibold">+10 pts</span>
+            </>
           ) : (
-            <X size={20} strokeWidth={3} aria-hidden="true" />
+            <>
+              ✗ Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
+            </>
           )}
-          <p className="text-heading-3 font-semibold tracking-display">
-            {isCorrect ? (
-              <>
-                Correct! <span className="text-label font-semibold">+10 pts</span>
-              </>
-            ) : (
-              <>
-                Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
-              </>
-            )}
-          </p>
-        </div>
+        </p>
         <p className="mt-1 text-label-small font-medium uppercase tracking-wider opacity-90">
           You said <strong className="uppercase">{userGuess.answer}</strong>
         </p>
