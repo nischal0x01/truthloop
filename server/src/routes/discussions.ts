@@ -229,12 +229,6 @@ router.patch('/:id', requireAuth, async (req, res) => {
   if (!existing) throw new AppError(404, 'Post not found.');
   if (existing.userId !== userId) throw new AppError(403, 'You can only edit your own posts.');
 
-  // 5-minute edit window
-  const createdAt = new Date(existing.createdAt).getTime();
-  if (Date.now() - createdAt > 5 * 60 * 1000) {
-    throw new AppError(403, 'Edit window has closed (5 minutes).');
-  }
-
   const [updated] = await db
     .update(schema.discussions)
     .set({ title, body, imageUrl, updatedAt: new Date() })
@@ -446,12 +440,6 @@ router.patch('/:id/comments/:commentId', requireAuth, async (req, res) => {
 
   if (!existing) throw new AppError(404, 'Comment not found.');
   if (existing.userId !== userId) throw new AppError(403, 'You can only edit your own comments.');
-
-  // 5-minute edit window
-  const createdAt = new Date(existing.createdAt).getTime();
-  if (Date.now() - createdAt > 5 * 60 * 1000) {
-    throw new AppError(403, 'Edit window has closed (5 minutes).');
-  }
 
   const [updated] = await db
     .update(schema.discussionComments)

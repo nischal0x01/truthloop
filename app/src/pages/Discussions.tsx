@@ -9,7 +9,7 @@
  *   - Detail view: single post + nested comment thread
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -48,6 +48,7 @@ import {
 
 export function Discussions() {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [editOnMountId, setEditOnMountId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOrder>('hot');
   const { user } = useAuth();
 
@@ -178,10 +179,11 @@ export function Discussions() {
 
   const handleEditPost = useCallback(
     (post: DiscussionPost) => {
-      // Re-save with existing data — edit UI (PostDetail inline or modal) will call this with new values
-      updatePostMutation.mutate({ postId: post.id, title: post.title, body: post.body, imageUrl: post.imageUrl });
+      // Navigate to detail view and open edit mode
+      setSelectedPostId(post.id);
+      setEditOnMountId(post.id);
     },
-    [updatePostMutation]
+    []
   );
 
   const handleDeletePost = useCallback(
@@ -281,9 +283,13 @@ export function Discussions() {
                       deleteCommentMutation.mutate({ discussionId: detailQuery.data!.post.id, commentId });
                     }
                   }}
+                  onEditPost={async (postId: string, title: string, body: string) => {
+                    await updatePostMutation.mutateAsync({ postId, title, body });
+                  }}
                   isPostVoting={voteMutation.isPending && voteMutation.variables?.postId === detailQuery.data?.post.id}
                   canInteract={!!user}
                   currentUserId={user?.id}
+                  editOnMountId={editOnMountId}
                 />
               ) : null}
             </motion.div>
@@ -492,9 +498,11 @@ interface PostDetailProps {
   onReply: (parentCommentId: string | null, body: string) => Promise<void>;
   onEditComment: (commentId: string, body: string) => Promise<void>;
   onDeleteComment: (commentId: string) => void;
+  onEditPost: (postId: string, title: string, body: string) => Promise<void>;
   isPostVoting?: boolean;
   canInteract: boolean;
   currentUserId?: string;
+  editOnMountId?: string | null;
 }
 
 function PostDetail({
@@ -506,15 +514,53 @@ function PostDetail({
   onReply,
   onEditComment,
   onDeleteComment,
+  onEditPost,
   isPostVoting,
   canInteract,
   currentUserId,
+  editOnMountId,
 }: PostDetailProps) {
+  const [editing, setEditing] = useState(editOnMountId === post.id);
+  const [editTitle, setEditTitle] = useState(post.title);
+  const [editBody, setEditBody] = useState(post.body);
+  const editSectionRef = useRef<HTMLDivElement>(null);
   const score = post.upvotes - post.downvotes;
   const tree = buildDiscussionTree(comments);
+  const canModify = currentUserId === post.authorId;
+
+  // Scroll to edit section when edit mode opens via editOnMountId
+  useEffect(() => {
+    if (editing) {
+      setTimeout(() => {
+        editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [editing]);
 
   const cast = (dir: 1 | -1) => {
     onVotePost(post.myVote === dir ? 0 : dir);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim()) return;
+    // Tiptap renders empty content as <p></p> — strip those before checking
+    const strippedBody = editBody.replace(/<p>\s*<\/p>/g, '').trim();
+    if (!strippedBody) return;
+    await onEditPost(post.id, editTitle.trim(), editBody);
+    setEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(false);
+    setEditTitle(post.title);
+    setEditBody(post.body);
+  };
+
+  const scrollToEdit = () => {
+    setEditing(true);
+    setTimeout(() => {
+      editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   return (
@@ -582,28 +628,76 @@ function PostDetail({
 
           {/* Content */}
           <div className="min-w-0 flex-1 p-5">
-            <h1 className="font-display text-heading-2 font-semibold leading-tight text-foreground">
-              {post.title}
-            </h1>
+            {editing ? (
+              <div className="space-y-3" ref={editSectionRef}>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  maxLength={300}
+                  className="w-full rounded-lg border-2 border-black bg-card px-3 py-2 text-label font-semibold shadow-hard-sm outline-none focus:ring-2 focus:ring-black"
+                />
+                <RichTextEditor
+                  content={editBody}
+                  onChange={setEditBody}
+                  placeholder="Write your post…"
+                  maxLength={2000}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    className="rounded-lg border-2 border-black bg-accent px-4 py-1.5 text-label-small font-semibold shadow-hard-sm hover:bg-accent/90"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="rounded-lg border-2 border-black bg-card px-4 py-1.5 text-label-small font-semibold shadow-hard-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <h1 className="font-display text-heading-2 font-semibold leading-tight text-foreground flex-1">
+                    {post.title}
+                  </h1>
+                  {canModify && (
+                    <button
+                      type="button"
+                      onClick={scrollToEdit}
+                      className="shrink-0 rounded-lg border-2 border-black bg-card p-1.5 text-label-small font-semibold shadow-hard-sm hover:bg-muted"
+                      aria-label="Edit post"
+                    >
+                      <Pencil size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
 
-            <div className="mt-2 flex items-center gap-2">
-              <UserAvatar
-                src={post.authorAvatarUrl}
-                name={post.authorName}
-                size={22}
-                className="border border-black"
-              />
-              <span className="text-label font-medium">{post.authorName}</span>
-              <span className="text-muted-foreground">·</span>
-              <span className="text-label-small text-muted-foreground">
-                {shortTimeAgo(post.createdAt)}
-              </span>
-            </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <UserAvatar
+                    src={post.authorAvatarUrl}
+                    name={post.authorName}
+                    size={22}
+                    className="border border-black"
+                  />
+                  <span className="text-label font-medium">{post.authorName}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-label-small text-muted-foreground">
+                    {shortTimeAgo(post.createdAt)}
+                  </span>
+                </div>
 
-            <div
-              className="mt-4 text-label leading-relaxed text-foreground/90 discussion-body"
-              dangerouslySetInnerHTML={{ __html: post.body }}
-            />
+                <div
+                  className="mt-4 text-label leading-relaxed text-foreground/90 discussion-body"
+                  dangerouslySetInnerHTML={{ __html: post.body }}
+                />
+              </>
+            )}
           </div>
         </div>
       </article>

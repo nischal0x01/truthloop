@@ -8,28 +8,18 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
-import path from 'path';
 import { AppError } from '@/middleware/errorHandler';
 
 const router = Router();
 
 // Configure Cloudinary from CLOUDINARY_URL env var
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloudinary_url: process.env.CLOUDINARY_URL,
 });
 
-// Multer config — store files temporarily on disk
-const storage = multer.diskStorage({
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
-  },
-});
-
+// Multer config — keep file in memory (not on disk) so we can upload as data URI
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -49,8 +39,11 @@ router.post('/image', upload.single('image'), async (req: Request, res: Response
       throw new AppError(400, 'No image file provided.');
     }
 
+    // Build a data URI so Cloudinary can process it without reaching back to our server
+    const dataUri = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+
     // Upload to Cloudinary
-    const result = await cloudinary.uploader.upload(file.path, {
+    const result = await cloudinary.uploader.upload(dataUri, {
       folder: 'truthloop',
       resource_type: 'image',
       transformation: [
