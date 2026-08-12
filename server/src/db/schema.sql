@@ -42,6 +42,10 @@ DO $$ BEGIN
   CREATE TYPE forecast_status AS ENUM ('success', 'fallback', 'failed');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE discussion_vote AS ENUM ('up', 'down');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- ════════════════════════════════════════════════════════════════════════
 -- users
 -- ════════════════════════════════════════════════════════════════════════
@@ -308,6 +312,80 @@ CREATE TABLE IF NOT EXISTS weekly_reports (
 
 CREATE INDEX IF NOT EXISTS idx_weekly_reports_user
   ON weekly_reports(user_id, week_starting DESC);
+
+-- ════════════════════════════════════════════════════════════════════════
+-- discussions  (standalone forum posts, separate from claim comments)
+-- ════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS discussions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title VARCHAR(300) NOT NULL CHECK (char_length(title) > 0 AND char_length(title) <= 300),
+  body TEXT NOT NULL CHECK (char_length(body) > 0 AND char_length(body) <= 500000),
+  image_url TEXT,
+  upvotes INTEGER NOT NULL DEFAULT 0,
+  downvotes INTEGER NOT NULL DEFAULT 0,
+  comment_count INTEGER NOT NULL DEFAULT 0,
+  is_deleted BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussions_user ON discussions(user_id);
+CREATE INDEX IF NOT EXISTS idx_discussions_created ON discussions(created_at DESC);
+
+-- ────────────────────────────────────────────────────────────────────────
+-- discussion_votes
+-- ────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS discussion_votes (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  discussion_id UUID NOT NULL REFERENCES discussions(id) ON DELETE CASCADE,
+  vote SMALLINT NOT NULL CHECK (vote IN (-1, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, discussion_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussion_votes_discussion ON discussion_votes(discussion_id);
+
+-- ════════════════════════════════════════════════════════════════════════
+-- discussion_comments  (standalone nested comments on discussions)
+-- ════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS discussion_comments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  discussion_id UUID NOT NULL REFERENCES discussions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  parent_comment_id UUID REFERENCES discussion_comments(id) ON DELETE CASCADE,
+  body TEXT NOT NULL CHECK (char_length(body) > 0 AND char_length(body) <= 500000),
+  toxicity_score REAL,
+  is_flagged BOOLEAN NOT NULL DEFAULT false,
+  is_deleted BOOLEAN NOT NULL DEFAULT false,
+  upvotes INTEGER NOT NULL DEFAULT 0,
+  downvotes INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussion_comments_discussion_created
+  ON discussion_comments(discussion_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discussion_comments_parent
+  ON discussion_comments(parent_comment_id) WHERE parent_comment_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_discussion_comments_user ON discussion_comments(user_id);
+
+-- ────────────────────────────────────────────────────────────────────────
+-- discussion_comment_votes
+-- ────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS discussion_comment_votes (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  comment_id UUID NOT NULL REFERENCES discussion_comments(id) ON DELETE CASCADE,
+  vote SMALLINT NOT NULL CHECK (vote IN (-1, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, comment_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussion_comment_votes_comment ON discussion_comment_votes(comment_id);
 
 -- ════════════════════════════════════════════════════════════════════════
 -- Triggers  (points + first-guess badge on correct guess)

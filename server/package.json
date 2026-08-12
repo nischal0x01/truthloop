@@ -16,6 +16,8 @@
     "db:seed:comments": "tsx src/db/seed-comments.ts"
   },
   "dependencies": {
+    "@types/multer": "^2.2.0",
+    "cloudinary": "^2.10.0",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -25,6 +27,7 @@
     "express-session": "^1.19.0",
     "helmet": "^8.1.0",
     "morgan": "^1.10.1",
+    "multer": "^2.2.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",

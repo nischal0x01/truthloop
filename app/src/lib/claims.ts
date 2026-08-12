@@ -23,10 +23,10 @@ export type ClaimCategory =
   | 'manipulated_stat'
   | 'misattributed_quote'
   | 'satire_mistaken_as_real'
-  | 'survey_stat'
   | 'conspiracy_theory'
-  | 'misattributed_threat'
-  | 'unverified_claim';
+  | 'unverified_claim'
+  | 'survey_stat'
+  | 'misattributed_threat';
 
 export interface Claim {
   id: string;
@@ -39,6 +39,9 @@ export interface Claim {
   publishedAt: string | null;
   trendingScore: number;
   voteCount: number;
+  /** Community vote breakdown — realCount + fakeCount = voteCount */
+  realCount?: number;
+  fakeCount?: number;
   createdAt: string;
 }
 
@@ -67,8 +70,7 @@ export const claimsApi = {
 
   get: (id: string) => api<{ claim: Claim }>(`/api/claims/${id}`),
 
-  myGuesses: () =>
-    api<{ guesses: UserGuessMap }>('/api/claims/me/guesses'),
+  myGuesses: () => api<{ guesses: UserGuessMap }>('/api/claims/me/guesses'),
 
   vote: (claimId: string, userAnswer: ClaimVerdict) =>
     api<VoteResult>(`/api/claims/${claimId}/guess`, {
@@ -97,16 +99,66 @@ export interface CategoryMeta {
 }
 
 export const CATEGORY_META: Record<ClaimCategory, CategoryMeta> = {
-  factual_statement:      { label: 'Factual claim',       icon: '📋', bg: 'bg-accent',     ink: 'text-accent-foreground' },
-  outdated_info:          { label: 'Outdated info',       icon: '⏰', bg: 'bg-warning',    ink: 'text-warning-foreground' },
-  misleading_omission:    { label: 'Missing context',     icon: '🔍', bg: 'bg-highlight',  ink: 'text-highlight-foreground' },
-  manipulated_stat:       { label: 'Manipulated stat',    icon: '📊', bg: 'bg-danger',     ink: 'text-danger-foreground' },
-  misattributed_quote:    { label: 'Wrong quote',         icon: '💬', bg: 'bg-highlight',  ink: 'text-highlight-foreground' },
-  satire_mistaken_as_real:{ label: 'Satire',              icon: '🎭', bg: 'bg-warning',    ink: 'text-warning-foreground' },
-  survey_stat:            { label: 'Survey stat',         icon: '📈', bg: 'bg-accent',     ink: 'text-accent-foreground' },
-  conspiracy_theory:      { label: 'Conspiracy',          icon: '👁️', bg: 'bg-danger',     ink: 'text-danger-foreground' },
-  misattributed_threat:   { label: 'Misattributed',       icon: '⚠️', bg: 'bg-danger',     ink: 'text-danger-foreground' },
-  unverified_claim:       { label: 'Unverified',          icon: '❓', bg: 'bg-muted',      ink: 'text-foreground' },
+  factual_statement: {
+    label: 'Factual claim',
+    icon: '📋',
+    bg: 'bg-accent',
+    ink: 'text-accent-foreground',
+  },
+  outdated_info: {
+    label: 'Outdated info',
+    icon: '⏰',
+    bg: 'bg-warning',
+    ink: 'text-warning-foreground',
+  },
+  misleading_omission: {
+    label: 'Missing context',
+    icon: '🔍',
+    bg: 'bg-highlight',
+    ink: 'text-highlight-foreground',
+  },
+  manipulated_stat: {
+    label: 'Manipulated stat',
+    icon: '📊',
+    bg: 'bg-danger',
+    ink: 'text-danger-foreground',
+  },
+  misattributed_quote: {
+    label: 'Misquoted',
+    icon: '💬',
+    bg: 'bg-secondary',
+    ink: 'text-secondary-foreground',
+  },
+  satire_mistaken_as_real: {
+    label: 'Satire',
+    icon: '🎭',
+    bg: 'bg-warning',
+    ink: 'text-warning-foreground',
+  },
+  conspiracy_theory: {
+    label: 'Conspiracy',
+    icon: '👁️',
+    bg: 'bg-danger',
+    ink: 'text-danger-foreground',
+  },
+  unverified_claim: {
+    label: 'Unverified',
+    icon: '❓',
+    bg: 'bg-muted',
+    ink: 'text-foreground',
+  },
+  survey_stat: {
+    label: 'Survey stat',
+    icon: '📊',
+    bg: 'bg-accent',
+    ink: 'text-accent-foreground',
+  },
+  misattributed_threat: {
+    label: 'Misattributed threat',
+    icon: '⚠️',
+    bg: 'bg-danger',
+    ink: 'text-danger-foreground',
+  },
 };
 
 /* ── Truncate claim text for feed previews (~280 chars) ── */

@@ -33,14 +33,14 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import {
-  AlertTriangle,
   Check,
   ExternalLink,
   MessageCircle,
   Sparkles,
-  Trophy,
   X,
+  Vote,
 } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
 import { VoteButtons } from './VoteButtons';
@@ -51,7 +51,10 @@ import {
   type Claim,
   type ClaimVerdict,
   type UserGuessMap,
+  type CategoryMeta,
 } from '@/lib/claims';
+
+const FALLBACK_META: CategoryMeta = { label: 'Claim', icon: '📋', bg: 'bg-muted', ink: 'text-foreground' };
 
 interface ClaimCardProps {
   claim: Claim;
@@ -123,25 +126,43 @@ export function ClaimCard({
     >
       {/* ── "YOUR TURN" badge (featured only) ── */}
       {featured && !locked && (
-        <div
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
           className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border-2 border-black bg-accent px-2 py-1 text-label-small font-bold uppercase tracking-wider text-accent-foreground shadow-hard-sm"
           aria-label="Your next claim to vote on"
         >
-          <Sparkles size={11} strokeWidth={2.5} aria-hidden="true" />
+          <motion.div
+            animate={{ rotate: [0, 10, -10, 0] }}
+            transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+          >
+            <Sparkles size={11} strokeWidth={2.5} aria-hidden="true" />
+          </motion.div>
           <span>Your turn</span>
-        </div>
+        </motion.div>
       )}
 
       {/* ── Header: category tile + meta ── */}
       <header className="flex items-center justify-between gap-3 border-b-2 border-black px-5 py-3">
         <CategoryPill category={claim.category} />
-        <span className="flex items-center gap-2 text-label-small font-medium text-foreground/70">
-          <span>{timeAgo(claim.publishedAt ?? claim.createdAt)}</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {claim.voteCount.toLocaleString()} {claim.voteCount === 1 ? 'vote' : 'votes'}
+        <div className="flex items-center gap-3">
+          <span className="text-label-small text-foreground/70">
+            {timeAgo(claim.publishedAt ?? claim.createdAt)}
           </span>
-        </span>
+          {/* Vote count badge - interactive */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen?.();
+            }}
+            className="group inline-flex items-center gap-1.5 rounded-full border-2 border-black bg-muted px-3 py-1 text-label-small font-bold text-foreground shadow-hard-sm transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-hard active:translate-y-px"
+            aria-label={`${claim.voteCount.toLocaleString()} votes — click to see details`}
+          >
+            <Vote size={12} strokeWidth={2.5} className="transition-transform group-hover:scale-110" aria-hidden="true" />
+            <span>{claim.voteCount.toLocaleString()}</span>
+          </button>
+        </div>
       </header>
 
       {/* ── Body: claim text + vote/verdict ── */}
@@ -156,13 +177,39 @@ export function ClaimCard({
 
         {/* ── Vote UI (or verdict reveal) ── */}
         <div className="mt-5" onClick={(e) => e.stopPropagation()}>
-          {!locked ? (
-            <VoteButtons isVoting={isVoting} onVote={onVote} />
-          ) : compact ? (
-            <CompactVerdict claim={claim} userGuess={userGuess!} />
-          ) : (
-            <VerdictReveal claim={claim} userGuess={userGuess!} />
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            {!locked ? (
+              <motion.div
+                key="vote-buttons"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <VoteButtons isVoting={isVoting} onVote={onVote} />
+              </motion.div>
+            ) : compact ? (
+              <motion.div
+                key="compact-verdict"
+                initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <CompactVerdict claim={claim} userGuess={userGuess!} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="verdict-reveal"
+                initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <VerdictReveal claim={claim} userGuess={userGuess!} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -174,7 +221,7 @@ export function ClaimCard({
           onClick={(e) => {
             e.stopPropagation();
             if (onOpen) onOpen();
-            else navigate(`/claim/${claim.id}`);
+            else navigate(`/claims/${claim.id}`);
           }}
           className="flex items-center gap-1 hover:text-foreground"
           aria-label="Discuss this claim"
@@ -197,18 +244,22 @@ function CompactVerdict({
   userGuess: NonNullable<ClaimCardProps['userGuess']>;
 }) {
   const isCorrect = userGuess.correct;
-  const VerdictGlyph = isCorrect ? Trophy : AlertTriangle;
+  const isReal = claim.verdict === 'real';
   return (
     <div
       className={[
         'flex items-center gap-2 rounded-md border-2 border-black px-3 py-2 text-label font-semibold',
-        isCorrect
-          ? 'bg-highlight text-highlight-foreground'
-          : 'bg-danger text-danger-foreground',
+        isReal
+          ? 'bg-real text-white'
+          : 'bg-fake text-white',
       ].join(' ')}
       role="status"
     >
-      <VerdictGlyph size={14} strokeWidth={2.5} aria-hidden="true" />
+      {isReal ? (
+        <span className="text-real" aria-hidden="true">✓</span>
+      ) : (
+        <span className="text-danger" aria-hidden="true">✗</span>
+      )}
       <span>
         You said <strong className="uppercase">{userGuess.answer}</strong> —{' '}
         {isCorrect ? 'correct' : `it was ${claim.verdict}`}
@@ -230,53 +281,71 @@ function VerdictReveal({
   userGuess: NonNullable<ClaimCardProps['userGuess']>;
 }) {
   const isCorrect = userGuess.correct;
+  const isReal = claim.verdict === 'real';
   return (
     <div className="space-y-4">
-      {/* Full-width verdict band. The headline is the most prominent thing on
-          the card — this is the moment of truth. */}
-      <div
+      {/* Full-width verdict band. Green for Real, Red for Fake. */}
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1], delay: 0.05 }}
         className={[
           'rounded-md border-2 border-black px-5 py-4 text-center',
-          isCorrect ? 'bg-highlight text-highlight-foreground' : 'bg-danger text-danger-foreground',
+          isReal ? 'bg-real text-white' : 'bg-fake text-white',
         ].join(' ')}
         role="status"
         aria-live="polite"
       >
-        <div className="flex items-center justify-center gap-2">
+        <motion.p
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1], delay: 0.15 }}
+          className="text-heading-3 font-semibold tracking-display"
+        >
           {isCorrect ? (
-            <Trophy size={20} strokeWidth={2.5} aria-hidden="true" />
+            <>
+              ✓ Correct! <motion.span
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1], delay: 0.35 }}
+                className="inline-block text-label font-semibold"
+              >
+                +10 pts
+              </motion.span>
+            </>
           ) : (
-            <AlertTriangle size={20} strokeWidth={2.5} aria-hidden="true" />
+            <>
+              ✗ Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
+            </>
           )}
-          <p className="text-heading-3 font-semibold tracking-display">
-            {isCorrect ? (
-              <>
-                Correct! <span className="text-label font-semibold">+10 pts</span>
-              </>
-            ) : (
-              <>
-                Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
-              </>
-            )}
-          </p>
-        </div>
-        <p className="mt-1 text-label-small font-medium uppercase tracking-wider opacity-90">
+        </motion.p>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.9 }}
+          transition={{ duration: 0.5, delay: 0.45 }}
+          className="mt-1 text-label-small font-medium uppercase tracking-wider"
+        >
           You said <strong className="uppercase">{userGuess.answer}</strong>
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
 
       {/* Verdict pill + explanation */}
-      <div className="rounded-md border-2 border-black bg-background p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1], delay: 0.25 }}
+        className="rounded-md border-2 border-black bg-background p-4"
+      >
         <div className="mb-2 flex items-center gap-2">
           <span
             className={[
-              'inline-flex items-center gap-1 rounded-md border-2 border-black px-2 py-0.5 text-label-small font-bold uppercase tracking-wider',
-              claim.verdict === 'real'
-                ? 'bg-card text-foreground'
-                : 'bg-danger text-danger-foreground',
+              'inline-flex items-center gap-1 rounded-md border-2 border-black px-3 py-1 text-label-small font-bold uppercase tracking-wider',
+              isReal
+                ? 'bg-real-light text-real-dark border-real'
+                : 'bg-fake-light text-fake-dark border-fake',
             ].join(' ')}
           >
-            {claim.verdict === 'real' ? (
+            {isReal ? (
               <>
                 <Check size={11} strokeWidth={3} aria-hidden="true" /> Real
               </>
@@ -287,7 +356,7 @@ function VerdictReveal({
             )}
           </span>
           <span className="text-label-small font-medium text-foreground/70">
-            {CATEGORY_META[claim.category].label}
+            {(CATEGORY_META[claim.category] ?? FALLBACK_META).label}
           </span>
         </div>
         <p className="text-label leading-relaxed text-foreground/90">{claim.explanation}</p>
@@ -297,13 +366,17 @@ function VerdictReveal({
             href={claim.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-1 text-label-small font-medium text-foreground underline underline-offset-4 hover:text-accent-foreground"
+            className="group/link mt-3 inline-flex items-center gap-1 text-label-small font-medium text-foreground underline underline-offset-4 transition-colors hover:text-accent-foreground"
           >
-            <ExternalLink size={12} aria-hidden="true" />
+            <ExternalLink
+              size={12}
+              aria-hidden="true"
+              className="transition-transform duration-300 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-px"
+            />
             Source
           </a>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -20,26 +20,26 @@
 
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
-import { useEffect, useMemo } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'motion/react';
-import { Flame, LogOut, Sparkles, TrendingUp } from 'lucide-react';
-import { ShieldCheck } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { Flame, Sparkles, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
   ClaimDetailPanel,
-  ClaimDetailEmpty,
   ClaimDetailDrawer,
 } from '@/components/feed/ClaimDetailPanel';
 import { Button } from '@/components/ui/button';
-import { UserAvatar } from '@/components/auth/UserAvatar';
+import { AppNav } from '@/components/AppNav';
 import {
   claimKeys,
   claimsApi,
+  CATEGORY_META,
   type Claim,
   type ClaimVerdict,
+  type ClaimCategory,
   type UserGuessMap,
 } from '@/lib/claims';
 
@@ -55,11 +55,15 @@ interface FeedProps {
 }
 
 export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedCategory, setSelectedCategory] = useState<ClaimCategory | null>(null);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
+  const reduce = useReducedMotion();
+
+  const EASE = [0.32, 0.72, 0, 1] as const;
 
   // Strip the ?welcome=true once we've shown it.
   useEffect(() => {
@@ -128,15 +132,22 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   /* ── Reorder: first unvoted on top (featured), rest unvoted, then voted ── */
   const orderedClaims = useMemo(() => {
     if (claims.length === 0) return [] as Claim[];
+    let filtered = claims;
+
+    // Apply category filter
+    if (selectedCategory) {
+      filtered = claims.filter((c) => c.category === selectedCategory);
+    }
+
     const unvoted: Claim[] = [];
     const voted: Claim[] = [];
-    for (const c of claims) {
+    for (const c of filtered) {
       if (guesses[c.id]) voted.push(c);
       else unvoted.push(c);
     }
     return [...unvoted, ...voted];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claimsQuery.data, guessesQuery.data]);
+  }, [claimsQuery.data, guessesQuery.data, selectedCategory]);
 
   const featuredId = orderedClaims[0] && !guesses[orderedClaims[0].id]
     ? orderedClaims[0].id
@@ -150,13 +161,13 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const selected = claims.find((c) => c.id === selectedClaimId) ?? null;
   const isPanelOpen = !!selected;
 
-  const openClaim = (id: string) => navigate(`/claim/${id}`);
-  const closePanel = () => navigate('/', { replace: true });
+  const openClaim = (id: string) => navigate(`/claims/${id}`);
+  const closePanel = () => navigate('/claims', { replace: true });
 
   // Deep link to a claim that isn't in the list — bounce to the feed.
   useEffect(() => {
     if (selectedClaimId && claimsQuery.isSuccess && !selected) {
-      navigate('/', { replace: true });
+      navigate('/claims', { replace: true });
     }
   }, [selectedClaimId, claimsQuery.isSuccess, selected, navigate]);
 
@@ -190,118 +201,156 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      {/* ── Top bar ── */}
-      <header className="z-30 shrink-0 border-b-2 border-black bg-background">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4 px-6 py-4">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-label font-semibold tracking-display"
-          >
-            <ShieldCheck size={20} strokeWidth={2.2} aria-hidden="true" />
-            <span>TruthLoop</span>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <Link
-              to="/profile"
-              className="hidden text-label font-medium text-foreground hover:underline underline-offset-4 sm:inline"
-            >
-              Profile
-            </Link>
-            {user && (
-              <>
-                <span className="hidden items-center gap-1.5 rounded-lg border-2 border-black bg-highlight px-2.5 py-1 text-label-small font-semibold text-highlight-foreground sm:inline-flex">
-                  {user.points ?? 0} pts
-                </span>
-                <UserAvatar
-                  src={user.avatarUrl}
-                  name={user.displayName}
-                  size={36}
-                  className="border-2 border-black"
-                />
-                <Button
-                  variant="outline"
-                  size="default"
-                  onClick={() => {
-                    void signOut().then(() => navigate('/'));
-                  }}
-                  aria-label="Sign out"
-                  className="border-2 border-black rounded-lg hover-lift"
-                >
-                  <LogOut size={14} aria-hidden="true" />
-                  <span className="hidden sm:inline">Sign out</span>
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      {/* ── Shared App Nav ── */}
+      <AppNav showClaims={true} />
 
       {/* ── Split pane ──
           Desktop: feed column scrolls independently, panel docked right.
           Mobile: single column; the panel becomes a bottom-sheet drawer. */}
       <div className="mx-auto flex w-full max-w-[1600px] min-h-0 flex-1">
         {/* Feed column */}
-        <div
+        <motion.div
+          layout
           className={[
             'min-h-0 flex-1 overflow-y-auto px-6 py-8',
-            isPanelOpen ? 'lg:max-w-2xl' : 'mx-auto max-w-3xl',
+            isPanelOpen ? 'lg:w-[55%] lg:max-w-[55%]' : 'mx-auto max-w-3xl',
           ].join(' ')}
         >
           {/* Welcome banner (post-OAuth) */}
           {isWelcome && user && (
-            <div className="mb-6 flex items-start gap-3 rounded-lg border-2 border-black bg-highlight p-4 text-highlight-foreground shadow-hard-sm">
-              <Sparkles size={20} aria-hidden="true" />
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: -10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.7, ease: EASE }}
+              className="mb-6 flex items-start gap-3 rounded-2xl border-2 border-black bg-highlight p-4 text-highlight-foreground shadow-hard-sm"
+            >
+              <motion.span
+                aria-hidden
+                animate={{ rotate: [0, 12, -12, 0] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                className="mt-0.5 shrink-0"
+              >
+                <Sparkles size={20} aria-hidden="true" />
+              </motion.span>
               <div>
                 <p className="font-semibold">Welcome, {user.displayName.split(' ')[0]}!</p>
                 <p className="text-label-small text-foreground/80">
                   Vote on a claim to earn your first 10 points.
                 </p>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Page header — the page's loudest moment. Display heading
               underlined with the brand accent, plus a streak chip on the right
               that flips orange the moment the user hits a streak. */}
-          <div className="mb-5">
+          <motion.div
+            className="mb-5"
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: {},
+              show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+            }}
+          >
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <p className="flex items-center gap-1.5 text-label-small font-semibold uppercase tracking-wider text-foreground/70">
+                <motion.p
+                  variants={{
+                    hidden: { opacity: 0, y: 8 },
+                    show: { opacity: 1, y: 0 },
+                  }}
+                  transition={{ duration: 0.5, ease: EASE }}
+                  className="flex items-center gap-1.5 text-label-small font-semibold uppercase tracking-wider text-foreground/70"
+                >
                   <TrendingUp size={14} aria-hidden="true" />
                   Today's claims
-                </p>
+                </motion.p>
                 <h1 className="mt-1 inline-block font-display text-display-medium font-semibold leading-[0.95] tracking-display text-foreground">
-                  Real or fake?
-                  {/* Brand-pink underline — signature accent that draws the
-                      eye to the heading without introducing a new colour. */}
-                  <span
-                    aria-hidden="true"
-                    className="mt-2 block h-1.5 w-24 rounded-sm bg-accent"
-                  />
+                  <span className="inline-block overflow-hidden align-baseline">
+                    <motion.span
+                      className="inline-block"
+                      variants={{
+                        hidden: { y: '110%', opacity: 0 },
+                        show: { y: '0%', opacity: 1 },
+                      }}
+                      transition={{ duration: 0.8, ease: EASE, delay: 0.1 }}
+                    >
+                      Real
+                    </motion.span>
+                  </span>{' '}
+                  <span className="inline-block overflow-hidden align-baseline">
+                    <motion.span
+                      className="inline-block"
+                      variants={{
+                        hidden: { y: '110%', opacity: 0 },
+                        show: { y: '0%', opacity: 1 },
+                      }}
+                      transition={{ duration: 0.8, ease: EASE, delay: 0.18 }}
+                    >
+                      or
+                    </motion.span>
+                  </span>{' '}
+                  <span className="relative inline-block overflow-hidden align-baseline">
+                    <motion.span
+                      className="relative inline-block"
+                      variants={{
+                        hidden: { y: '110%', opacity: 0 },
+                        show: { y: '0%', opacity: 1 },
+                      }}
+                      transition={{ duration: 0.8, ease: EASE, delay: 0.26 }}
+                    >
+                      fake?
+                    </motion.span>
+                    {/* Brand-pink underline — signature accent that draws the
+                        eye to the heading without introducing a new colour. */}
+                    <motion.span
+                      aria-hidden="true"
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: 0.7, ease: EASE, delay: 0.7 }}
+                      className="absolute bottom-0 left-0 h-1.5 w-24 origin-left rounded-sm bg-pink-accent"
+                    />
+                  </span>
                 </h1>
                 {claims.length > 0 && (
-                  <p className="mt-3 text-label font-medium text-foreground/80">
-                    {votedCount} of {totalCount} voted
+                  <motion.p
+                    variants={{
+                      hidden: { opacity: 0, y: 6 },
+                      show: { opacity: 1, y: 0 },
+                    }}
+                    transition={{ duration: 0.5, ease: EASE, delay: 0.4 }}
+                    className="mt-3 text-label font-medium text-foreground/80"
+                  >
+                    <span className="tabular-nums">{votedCount}</span> of{' '}
+                    <span className="tabular-nums">{totalCount}</span> voted
                     {progressPct === 100 && totalCount > 0 ? ' · all caught up 🎉' : ' · tap a card to vote'}
-                  </p>
+                  </motion.p>
                 )}
               </div>
 
-              {/* Streak chip — the user is on a streak if their last few votes
-                  were correct. We don't track streaks server-side yet, so we
-                  derive a simple "hot" state from recent correct votes. */}
+              {/* Streak chip */}
               {user && (
-                <StreakChip guesses={guesses} claims={claims} />
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, scale: 0.85, y: 8 },
+                    show: { opacity: 1, scale: 1, y: 0 },
+                  }}
+                  transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
+                >
+                  <StreakChip guesses={guesses} claims={claims} />
+                </motion.div>
               )}
             </div>
 
-            {/* Progress rail — chunky, brand-coloured, clearly readable at a
-                glance. The filled portion uses yellow (highlight) so the user
-                sees their progress without staring at numbers. */}
+            {/* Progress rail - color intensity increases with votes */}
             {claims.length > 0 && (
-              <div
-                className="mt-5 h-3 w-full overflow-hidden rounded-md border-2 border-black bg-muted"
+              <motion.div
+                initial={{ opacity: 0, scaleX: 0 }}
+                animate={{ opacity: 1, scaleX: 1 }}
+                transition={{ duration: 0.7, ease: EASE, delay: 0.5 }}
+                style={{ transformOrigin: 'left center' }}
+                className="mt-5 h-4 w-full overflow-hidden rounded-md border-2 border-black bg-muted"
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}
@@ -309,18 +358,75 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 aria-label={`${votedCount} of ${totalCount} claims voted`}
               >
                 <motion.div
-                  className="h-full bg-highlight"
+                  className={[
+                    'h-full transition-colors duration-500',
+                    progressPct === 100 ? 'bg-real' : progressPct >= 75 ? 'bg-accent' : 'bg-orange',
+                  ].join(' ')}
                   initial={false}
                   animate={{ width: `${progressPct}%` }}
                   transition={{ type: 'spring', damping: 22, stiffness: 180 }}
                 />
-              </div>
+              </motion.div>
             )}
-          </div>
+
+            {/* Category filter bar */}
+            <motion.div
+              className="mt-5 flex flex-wrap gap-2"
+              variants={{
+                hidden: {},
+                show: { transition: { staggerChildren: 0.04, delayChildren: 0.55 } },
+              }}
+            >
+              <motion.button
+                type="button"
+                onClick={() => setSelectedCategory(null)}
+                variants={{
+                  hidden: { opacity: 0, y: 6 },
+                  show: { opacity: 1, y: 0 },
+                }}
+                transition={{ duration: 0.4, ease: EASE }}
+                whileTap={{ scale: 0.95 }}
+                className={`rounded-lg border-2 border-black px-3 py-1.5 text-label-small font-medium transition-all hover-lift ${
+                  selectedCategory === null
+                    ? 'bg-black text-white shadow-hard-sm'
+                    : 'bg-card text-foreground shadow-hard-sm'
+                }`}
+              >
+                All
+              </motion.button>
+              {Object.entries(CATEGORY_META).map(([key, meta]) => {
+                const cat = key as ClaimCategory;
+                const isActive = selectedCategory === cat;
+                return (
+                  <motion.button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedCategory(isActive ? null : cat)}
+                    variants={{
+                      hidden: { opacity: 0, y: 6 },
+                      show: { opacity: 1, y: 0 },
+                    }}
+                    transition={{ duration: 0.4, ease: EASE }}
+                    whileTap={{ scale: 0.95 }}
+                    className={`rounded-lg border-2 border-black px-3 py-1.5 text-label-small font-medium transition-all hover-lift ${meta.bg} ${meta.ink} ${
+                      isActive ? 'ring-2 ring-black ring-offset-2' : 'shadow-hard-sm'
+                    }`}
+                  >
+                    {meta.icon} {meta.label}
+                  </motion.button>
+                );
+              })}
+            </motion.div>
+          </motion.div>
 
           {/* Error state */}
           {error && (
-            <div className="mb-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground">
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.5, ease: EASE }}
+              className="mb-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground"
+            >
               <p className="font-semibold">Couldn't load claims.</p>
               <p className="mt-1 text-label-small">{error.message}</p>
               <Button
@@ -334,47 +440,88 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               >
                 Try again
               </Button>
-            </div>
+            </motion.div>
           )}
 
           {/* Loading state */}
           {isInitialLoading && (
-            <div className="space-y-5">
+            <motion.div
+              className="space-y-5"
+              initial="hidden"
+              animate="show"
+              variants={{
+                hidden: {},
+                show: { transition: { staggerChildren: 0.1, delayChildren: 0.05 } },
+              }}
+            >
               {Array.from({ length: 3 }).map((_, i) => (
-                <ClaimCardSkeleton key={i} />
+                <motion.div
+                  key={i}
+                  variants={{
+                    hidden: { opacity: 0, y: 12 },
+                    show: { opacity: 1, y: 0 },
+                  }}
+                  transition={{ duration: 0.5, ease: EASE }}
+                >
+                  <ClaimCardSkeleton />
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           )}
 
           {/* Empty state */}
           {!isInitialLoading && !error && claims.length === 0 && (
-            <div className="rounded-lg border-2 border-black bg-card p-10 text-center shadow-hard">
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.7, ease: EASE }}
+              className="rounded-lg border-2 border-black bg-card p-10 text-center shadow-hard"
+            >
               <p className="font-display text-heading-2 font-semibold">No claims yet</p>
               <p className="mt-2 text-body text-foreground/70">
                 The team is curating today's batch. Check back in a few minutes.
               </p>
-            </div>
+            </motion.div>
           )}
 
           {/* Feed */}
           {!isInitialLoading && claims.length > 0 && (
-            <div className="space-y-5">
-              {orderedClaims.map((claim) => (
-                <ClaimCard
-                  key={claim.id}
-                  claim={claim}
-                  userGuess={guesses[claim.id]}
-                  isVoting={
-                    voteMutation.isPending && voteMutation.variables?.claimId === claim.id
-                  }
-                  onVote={(answer) => handleVote(claim.id, answer)}
-                  onOpen={() => openClaim(claim.id)}
-                  isActive={selectedClaimId === claim.id}
-                  featured={claim.id === featuredId}
-                  compact={isPanelOpen}
-                />
-              ))}
-            </div>
+            <motion.div
+              className="space-y-5"
+              initial="hidden"
+              animate="show"
+              variants={{
+                hidden: {},
+                show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+              }}
+            >
+              <AnimatePresence mode="popLayout">
+                {orderedClaims.map((claim) => (
+                  <motion.div
+                    key={claim.id}
+                    layout
+                    variants={{
+                      hidden: { opacity: 0, y: 20, filter: 'blur(8px)' },
+                      show: { opacity: 1, y: 0, filter: 'blur(0px)' },
+                    }}
+                    transition={{ duration: 0.7, ease: EASE }}
+                  >
+                    <ClaimCard
+                      claim={claim}
+                      userGuess={guesses[claim.id]}
+                      isVoting={
+                        voteMutation.isPending && voteMutation.variables?.claimId === claim.id
+                      }
+                      onVote={(answer) => handleVote(claim.id, answer)}
+                      onOpen={() => openClaim(claim.id)}
+                      isActive={selectedClaimId === claim.id}
+                      featured={claim.id === featuredId}
+                      compact={isPanelOpen}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
           )}
 
           {/* Vote-error banner */}
@@ -389,36 +536,33 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               </p>
             </div>
           )}
-        </div>
+        </motion.div>
 
-        {/* ── Docked panel (desktop only) ── */}
-        <AnimatePresence initial={false}>
+        {/* ── Desktop Detail Panel (docked right) ── */}
+        <AnimatePresence>
           {isPanelOpen && (
-            <motion.aside
-              key="docked-panel"
-              className="hidden min-h-0 shrink-0 border-l-2 border-black lg:block lg:w-[clamp(400px,38vw,620px)]"
-              initial={{ x: 40, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 40, opacity: 0 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            <motion.div
+              layout
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: '45%', opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="hidden lg:block min-h-0 border-l-2 border-black"
             >
-              {panelContent}
-            </motion.aside>
+              <div className="h-full overflow-hidden">
+                {panelContent}
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Idle hint in the dock area when nothing is selected (desktop, wide) */}
-        {!isPanelOpen && claims.length > 0 && (
-          <aside className="hidden min-h-0 w-[clamp(400px,32vw,520px)] shrink-0 border-l-2 border-black xl:block">
-            <ClaimDetailEmpty />
-          </aside>
-        )}
       </div>
 
-      {/* ── Mobile drawer ── */}
-      <ClaimDetailDrawer open={isPanelOpen} onClose={closePanel}>
-        {panelContent}
-      </ClaimDetailDrawer>
+      {/* ── Mobile Claim Detail Drawer (hidden on desktop) ── */}
+      <div className="lg:hidden">
+        <ClaimDetailDrawer open={isPanelOpen} onClose={closePanel} fullScreen>
+          {panelContent}
+        </ClaimDetailDrawer>
+      </div>
     </div>
   );
 }
@@ -458,12 +602,22 @@ function StreakChip({
   if (streak < 2) return null;
 
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-black bg-orange px-2.5 py-1 text-label-small font-bold uppercase tracking-wider text-foreground shadow-hard-sm"
+    <motion.span
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
+      whileHover={{ scale: 1.04, rotate: -2 }}
+      className="inline-flex cursor-default items-center gap-1.5 rounded-lg border-2 border-black bg-orange px-2.5 py-1 text-label-small font-bold uppercase tracking-wider text-foreground shadow-hard-sm"
       aria-label={`On a ${streak}-claim streak`}
     >
-      <Flame size={14} strokeWidth={2.5} aria-hidden="true" />
+      <motion.span
+        aria-hidden
+        animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.1, 1] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <Flame size={14} strokeWidth={2.5} aria-hidden="true" />
+      </motion.span>
       <span>{streak} streak</span>
-    </span>
+    </motion.span>
   );
 }

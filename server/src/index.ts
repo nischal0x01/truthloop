@@ -54,6 +54,7 @@ app.use(
           'data:',
           'https://lh3.googleusercontent.com',
           'https://*.googleusercontent.com',
+          'https://res.cloudinary.com',
         ],
       },
     },
@@ -61,7 +62,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: [process.env.CORS_ORIGIN || 'http://localhost:5173', 'http://localhost:5174'].filter(Boolean),
     credentials: true,
   })
 );
