@@ -19,6 +19,7 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { Loader } from 'lucide-react';
+import { motion } from 'motion/react';
 
 type Answer = 'real' | 'fake';
 
@@ -30,6 +31,8 @@ interface VoteButtonsProps {
   onVote: (answer: Answer) => void;
   disabled?: boolean;
 }
+
+const EASE = [0.32, 0.72, 0, 1] as const;
 
 export function VoteButtons({
   userVote,
@@ -46,7 +49,10 @@ export function VoteButtons({
         role="group"
         aria-label="Your vote is locked"
       >
-        <div
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, ease: EASE }}
           aria-pressed={userVote === 'real'}
           className={[
             'flex items-center justify-center gap-2 rounded-lg border-2 border-black px-4 py-3 text-label font-semibold',
@@ -56,8 +62,11 @@ export function VoteButtons({
           ].join(' ')}
         >
           <span className="text-[16px] font-bold">REAL</span>
-        </div>
-        <div
+        </motion.div>
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, ease: EASE, delay: 0.05 }}
           aria-pressed={userVote === 'fake'}
           className={[
             'flex items-center justify-center gap-2 rounded-lg border-2 border-black px-4 py-3 text-label font-semibold',
@@ -67,7 +76,7 @@ export function VoteButtons({
           ].join(' ')}
         >
           <span className="text-[16px] font-bold">FAKE</span>
-        </div>
+        </motion.div>
       </div>
     );
   }
@@ -86,13 +95,16 @@ export function VoteButtons({
         aria-labelledby="vote-prompt"
         aria-label="Vote real or fake"
       >
-        <button
+        <motion.button
           key="real"
           type="button"
           onClick={() => onVote('real')}
           disabled={disabled || isVoting}
           aria-busy={isVoting}
-          className="group relative flex h-20 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border-2 border-black bg-real px-3 text-white shadow-hard-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-real/90 hover:shadow-hard active:translate-x-0 active:translate-y-0 active:shadow-hard-sm focus-visible:focus-hard disabled:cursor-not-allowed disabled:opacity-55"
+          whileHover={!disabled && !isVoting ? { scale: 1.02 } : undefined}
+          whileTap={!disabled && !isVoting ? { scale: 0.97 } : undefined}
+          transition={{ duration: 0.25, ease: EASE }}
+          className="group relative flex h-20 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border-2 border-black bg-real px-3 text-white shadow-hard-sm transition-[box-shadow,background-color,translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-real/90 hover:shadow-hard active:translate-x-0 active:translate-y-0 active:shadow-hard-sm focus-visible:focus-hard disabled:cursor-not-allowed disabled:opacity-55"
         >
           {isVoting ? (
             <Loader size={22} className="animate-spin" aria-hidden="true" />
@@ -102,17 +114,20 @@ export function VoteButtons({
             </span>
           )}
           <span className="text-[11px] font-medium uppercase tracking-wider text-white/70">
-            It's true
+            It&apos;s true
           </span>
-        </button>
+        </motion.button>
 
-        <button
+        <motion.button
           key="fake"
           type="button"
           onClick={() => onVote('fake')}
           disabled={disabled || isVoting}
           aria-busy={isVoting}
-          className="group relative flex h-20 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border-2 border-black bg-danger px-3 text-white shadow-hard-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-danger/90 hover:shadow-hard active:translate-x-0 active:translate-y-0 active:shadow-hard-sm focus-visible:focus-hard disabled:cursor-not-allowed disabled:opacity-55"
+          whileHover={!disabled && !isVoting ? { scale: 1.02 } : undefined}
+          whileTap={!disabled && !isVoting ? { scale: 0.97 } : undefined}
+          transition={{ duration: 0.25, ease: EASE }}
+          className="group relative flex h-20 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border-2 border-black bg-danger px-3 text-white shadow-hard-sm transition-[box-shadow,background-color,translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-danger/90 hover:shadow-hard active:translate-x-0 active:translate-y-0 active:shadow-hard-sm focus-visible:focus-hard disabled:cursor-not-allowed disabled:opacity-55"
         >
           {isVoting ? (
             <Loader size={22} className="animate-spin" aria-hidden="true" />
@@ -122,9 +137,9 @@ export function VoteButtons({
             </span>
           )}
           <span className="text-[11px] font-medium uppercase tracking-wider text-white/70">
-            It's false
+            It&apos;s false
           </span>
-        </button>
+        </motion.button>
       </div>
     </div>
   );

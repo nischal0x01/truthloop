@@ -14,7 +14,7 @@
  */
 
 import { useMemo, useRef } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check, ArrowUp, ArrowDown } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
@@ -56,6 +56,8 @@ export function ClaimDetailPanel({
   onClose,
   canInteract,
 }: ClaimDetailPanelProps) {
+  const reduce = useReducedMotion();
+  const EASE = [0.32, 0.72, 0, 1] as const;
   const qc = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasVoted = !!userGuess;
@@ -194,12 +196,20 @@ export function ClaimDetailPanel({
   });
 
   return (
-    <section
+    <motion.section
+      initial={reduce ? false : { opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.6, ease: EASE }}
       className="flex flex-col h-full bg-background relative"
       aria-label="Claim detail and discussion"
     >
       {/* ── Header ── */}
-      <header className="border-b-2 border-black bg-card px-5 py-4 shrink-0">
+      <motion.header
+        initial={reduce ? false : { opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: EASE, delay: 0.1 }}
+        className="border-b-2 border-black bg-card px-5 py-4 shrink-0"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <CategoryPill category={claim.category} />
@@ -211,14 +221,17 @@ export function ClaimDetailPanel({
             </span>
           </div>
 
-          <button
+          <motion.button
             type="button"
             onClick={onClose}
             aria-label="Close detail panel"
-            className="grid size-8 shrink-0 place-items-center rounded-lg border-2 border-black bg-background transition-transform hover:-translate-y-px hover-lift"
+            whileHover={{ scale: 1.08, rotate: 90 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ duration: 0.25, ease: EASE }}
+            className="grid size-8 shrink-0 place-items-center rounded-lg border-2 border-black bg-background"
           >
             <X size={15} strokeWidth={2.5} aria-hidden="true" />
-          </button>
+          </motion.button>
         </div>
 
         <h2
@@ -227,12 +240,17 @@ export function ClaimDetailPanel({
         >
           &ldquo;{claim.text}&rdquo;
         </h2>
-      </header>
+      </motion.header>
 
       {/* ── Scrollable body ── */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
         {/* Vote distribution stats */}
-        <div className="mb-4 rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.2 }}
+          className="mb-4 rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm"
+        >
           <div className="mb-2 flex items-center justify-between text-label-small font-semibold">
             <span className="text-real">✓ {realCount.toLocaleString()} said Real</span>
             <span className="text-muted-foreground">vs</span>
@@ -240,9 +258,12 @@ export function ClaimDetailPanel({
           </div>
           {/* Distribution bar */}
           <div className="h-3 overflow-hidden rounded-md border-2 border-black bg-red">
-            <div
+            <motion.div
+              key={`real-${claim.id}`}
               className="h-full bg-real"
-              style={{ width: `${realPct}%` }}
+              initial={{ width: 0 }}
+              animate={{ width: `${realPct}%` }}
+              transition={{ duration: 0.9, ease: EASE, delay: 0.35 }}
               role="img"
               aria-label={`${realPct}% voted Real, ${fakePct}% voted Fake`}
             />
@@ -251,24 +272,56 @@ export function ClaimDetailPanel({
             <span>{realPct}% Real</span>
             <span>{fakePct}% Fake</span>
           </div>
-        </div>
+        </motion.div>
 
         {/* Vote / verdict */}
-        {!hasVoted ? (
-          <div className="rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
-            <VoteButtons isVoting={isVoting} onVote={onVote} />
-            <p className="mt-4 flex items-center gap-1.5 text-label-small font-medium text-foreground/70">
-              <Lock size={12} aria-hidden="true" />
-              Vote to reveal the verdict and unlock the discussion.
-            </p>
-          </div>
-        ) : (
-          <VerdictBlock claim={claim} userGuess={userGuess} />
-        )}
+        <AnimatePresence mode="wait">
+          {!hasVoted ? (
+            <motion.div
+              key="vote-block"
+              initial={reduce ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }}
+              transition={{ duration: 0.4, ease: EASE }}
+              className="rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm"
+            >
+              <VoteButtons isVoting={isVoting} onVote={onVote} />
+              <motion.p
+                initial={reduce ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, ease: EASE, delay: 0.4 }}
+                className="mt-4 flex items-center gap-1.5 text-label-small font-medium text-foreground/70"
+              >
+                <motion.span
+                  aria-hidden
+                  animate={{ rotate: [0, -8, 8, 0] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Lock size={12} aria-hidden="true" />
+                </motion.span>
+                Vote to reveal the verdict and unlock the discussion.
+              </motion.p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="verdict-block"
+              initial={reduce ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: EASE }}
+            >
+              <VerdictBlock claim={claim} userGuess={userGuess} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Discussion */}
         {hasVoted && (
-          <div className="mt-6">
+          <motion.div
+            className="mt-6"
+            initial={reduce ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
+          >
             <h3 className="mb-3 flex items-center gap-2 text-label font-semibold">
               <MessagesSquare size={15} aria-hidden="true" />
               Discussion
@@ -276,14 +329,24 @@ export function ClaimDetailPanel({
             </h3>
 
             {commentsQuery.isLoading && (
-              <div className="flex items-center gap-2 py-6 text-label-small text-muted-foreground">
+              <motion.div
+                initial={reduce ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3, ease: EASE }}
+                className="flex items-center gap-2 py-6 text-label-small text-muted-foreground"
+              >
                 <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                 Loading discussion…
-              </div>
+              </motion.div>
             )}
 
             {commentsQuery.isError && (
-              <div className="rounded-lg border-2 border-black bg-danger p-3 text-danger-foreground">
+              <motion.div
+                initial={reduce ? false : { opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className="rounded-lg border-2 border-black bg-danger p-3 text-danger-foreground"
+              >
                 <p className="text-label-small font-medium">Couldn't load the discussion.</p>
                 <button
                   type="button"
@@ -292,13 +355,18 @@ export function ClaimDetailPanel({
                 >
                   Try again
                 </button>
-              </div>
+              </motion.div>
             )}
 
             {commentsQuery.isSuccess && total === 0 && (
-              <p className="rounded-lg border-2 border-dashed border-black/30 px-4 py-6 text-center text-label-small text-muted-foreground">
+              <motion.p
+                initial={reduce ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className="rounded-lg border-2 border-dashed border-black/30 px-4 py-6 text-center text-label-small text-muted-foreground"
+              >
                 No comments yet — start the thread.
-              </p>
+              </motion.p>
             )}
 
             {total > 0 && (
@@ -319,7 +387,7 @@ export function ClaimDetailPanel({
                 }}
               />
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* Scroll navigation */}
@@ -347,7 +415,7 @@ export function ClaimDetailPanel({
           />
         )}
       </footer>
-    </section>
+    </motion.section>
   );
 }
 
@@ -356,11 +424,15 @@ export function ClaimDetailPanel({
 function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGuess }) {
   const correct = userGuess?.correct;
   const isReal = claim.verdict === 'real';
+  const EASE = [0.32, 0.72, 0, 1] as const;
 
   return (
     <div className="space-y-4">
       {/* Verdict header — green for Real, pink for Fake */}
-      <div
+      <motion.div
+        initial={{ scale: 0.94, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: EASE }}
         className={[
           'rounded-lg border-2 border-black px-4 py-4 text-center shadow-hard-sm',
           isReal ? 'bg-real text-white' : 'bg-fake text-white',
@@ -368,24 +440,47 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
         role="status"
         aria-live="polite"
       >
-        <p className="text-heading-3 font-semibold tracking-display">
+        <motion.p
+          initial={{ y: 8, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.1 }}
+          className="text-heading-3 font-semibold tracking-display"
+        >
           {correct ? (
             <>
-              ✓ Correct! <span className="text-label font-semibold">+10 pts</span>
+              ✓ Correct!{' '}
+              <motion.span
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.4, ease: EASE, delay: 0.3 }}
+                className="inline-block text-label font-semibold"
+              >
+                +10 pts
+              </motion.span>
             </>
           ) : (
             <>
               ✗ Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
             </>
           )}
-        </p>
-        <p className="mt-1 text-label-small font-semibold uppercase tracking-wider opacity-90">
+        </motion.p>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.9 }}
+          transition={{ duration: 0.5, delay: 0.35 }}
+          className="mt-1 text-label-small font-semibold uppercase tracking-wider"
+        >
           You said <strong className="uppercase">{userGuess?.answer}</strong>
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
 
       {/* Verdict pill + explanation */}
-      <div className="rounded-lg border-2 border-black bg-card p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: EASE, delay: 0.15 }}
+        className="rounded-lg border-2 border-black bg-card p-4"
+      >
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span
             className={[
@@ -417,23 +512,32 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
             href={claim.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-1 text-label-small font-medium underline underline-offset-4 hover:text-accent-foreground"
+            className="group/link mt-3 inline-flex items-center gap-1 text-label-small font-medium underline underline-offset-4 transition-colors hover:text-accent-foreground"
           >
-            <ExternalLink size={12} aria-hidden="true" />
+            <ExternalLink
+              size={12}
+              aria-hidden="true"
+              className="transition-transform duration-300 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-px"
+            />
             Source
           </a>
         )}
-      </div>
+      </motion.div>
 
       {/* Community vote distribution slider */}
       {(claim.realCount != null || claim.fakeCount != null) && (
-        <div className="rounded-lg border-2 border-black bg-card p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.25 }}
+          className="rounded-lg border-2 border-black bg-card p-4"
+        >
           <VoteSlider
             realCount={claim.realCount ?? 0}
             fakeCount={claim.fakeCount ?? 0}
             userVote={userGuess?.answer}
           />
-        </div>
+        </motion.div>
       )}
     </div>
   );
@@ -453,25 +557,38 @@ function ScrollNavigator({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElem
     });
   };
 
+  const EASE = [0.32, 0.72, 0, 1] as const;
+
   return (
-    <div className="fixed right-6 bottom-24 flex flex-col gap-2 z-10">
-      <button
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
+      className="fixed right-6 bottom-24 flex flex-col gap-2 z-10"
+    >
+      <motion.button
         type="button"
         onClick={scrollToTop}
         aria-label="Scroll to top"
-        className="grid size-10 place-items-center rounded-lg border-2 border-black bg-card shadow-hard-sm transition-transform hover:-translate-y-0.5 hover-lift"
+        whileHover={{ scale: 1.08, y: -2 }}
+        whileTap={{ scale: 0.92 }}
+        transition={{ duration: 0.2, ease: EASE }}
+        className="grid size-10 place-items-center rounded-lg border-2 border-black bg-card shadow-hard-sm"
       >
         <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
-      </button>
-      <button
+      </motion.button>
+      <motion.button
         type="button"
         onClick={scrollToBottom}
         aria-label="Scroll to bottom"
-        className="grid size-10 place-items-center rounded-lg border-2 border-black bg-card shadow-hard-sm transition-transform hover:-translate-y-0.5 hover-lift"
+        whileHover={{ scale: 1.08, y: 2 }}
+        whileTap={{ scale: 0.92 }}
+        transition={{ duration: 0.2, ease: EASE }}
+        className="grid size-10 place-items-center rounded-lg border-2 border-black bg-card shadow-hard-sm"
       >
         <ArrowDown size={16} strokeWidth={2.5} aria-hidden="true" />
-      </button>
-    </div>
+      </motion.button>
+    </motion.div>
   );
 }
 
