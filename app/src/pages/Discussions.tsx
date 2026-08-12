@@ -149,7 +149,7 @@ export function Discussions() {
               Discussions
               <span
                 aria-hidden="true"
-                className="mt-2 block h-1.5 w-24 rounded-sm bg-accent"
+                className="mt-2 block h-1.5 w-24 rounded-sm bg-pink-accent"
               />
             </h1>
           </div>

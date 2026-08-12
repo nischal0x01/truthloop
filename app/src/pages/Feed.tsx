@@ -242,7 +242,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                       eye to the heading without introducing a new colour. */}
                   <span
                     aria-hidden="true"
-                    className="mt-2 block h-1.5 w-24 rounded-sm bg-accent"
+                    className="mt-2 block h-1.5 w-24 rounded-sm bg-pink-accent"
                   />
                 </h1>
                 {claims.length > 0 && (
