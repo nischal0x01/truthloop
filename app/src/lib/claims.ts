@@ -24,7 +24,9 @@ export type ClaimCategory =
   | 'misattributed_quote'
   | 'satire_mistaken_as_real'
   | 'conspiracy_theory'
-  | 'unverified_claim';
+  | 'unverified_claim'
+  | 'survey_stat'
+  | 'misattributed_threat';
 
 export interface Claim {
   id: string;
@@ -144,6 +146,18 @@ export const CATEGORY_META: Record<ClaimCategory, CategoryMeta> = {
     icon: '❓',
     bg: 'bg-muted',
     ink: 'text-foreground',
+  },
+  survey_stat: {
+    label: 'Survey stat',
+    icon: '📊',
+    bg: 'bg-accent',
+    ink: 'text-accent-foreground',
+  },
+  misattributed_threat: {
+    label: 'Misattributed threat',
+    icon: '⚠️',
+    bg: 'bg-danger',
+    ink: 'text-danger-foreground',
   },
 };
 

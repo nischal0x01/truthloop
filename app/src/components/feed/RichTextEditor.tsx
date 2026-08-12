@@ -31,8 +31,6 @@ export function RichTextEditor({
   className = '',
 }: RichTextEditorProps) {
   const [uploading, setUploading] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [showLinkInput, setShowLinkInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
@@ -90,12 +88,18 @@ export function RichTextEditor({
   }, [handleImageUpload]);
 
   const handleAddLink = useCallback(() => {
-    if (!linkUrl.trim()) return;
-    const url = linkUrl.startsWith('http') ? linkUrl : `https://${linkUrl}`;
-    editor?.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-    setLinkUrl('');
-    setShowLinkInput(false);
-  }, [editor, linkUrl]);
+    // Use prompt for simplest UX — select text, click link, enter URL, done
+    const previousUrl = editor?.getAttributes('link').href ?? '';
+    const url = window.prompt('Enter URL:', previousUrl || 'https://');
+    if (url === null) return; // cancelled
+    const trimmed = url.trim();
+    if (!trimmed) {
+      editor?.chain().focus().unsetLink().run();
+      return;
+    }
+    const finalUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+    editor?.chain().focus().extendMarkRange('link').setLink({ href: finalUrl }).run();
+  }, [editor]);
 
   const handleRemoveLink = useCallback(() => {
     editor?.chain().focus().unsetLink().run();
@@ -146,51 +150,25 @@ export function RichTextEditor({
           </svg>
         </ToolbarButton>
 
-        {/* Link */}
-        <div className="relative">
+        {/* Link — click to add/edit link */}
+        <ToolbarButton
+          onClick={handleAddLink}
+          active={editor.isActive('link')}
+          disabled={disabled}
+          title={editor.isActive('link') ? 'Edit Link' : 'Add Link'}
+        >
+          <Link2 size={14} aria-hidden="true" />
+        </ToolbarButton>
+        {editor.isActive('link') && (
           <ToolbarButton
-            onClick={() => setShowLinkInput(!showLinkInput)}
-            active={editor.isActive('link') || showLinkInput}
+            onClick={handleRemoveLink}
+            active={false}
             disabled={disabled}
-            title="Add Link"
+            title="Remove Link"
           >
-            <Link2 size={14} aria-hidden="true" />
+            <X size={14} aria-hidden="true" />
           </ToolbarButton>
-
-          {showLinkInput && (
-            <div className="absolute left-0 top-full z-10 mt-1 flex items-center gap-1 rounded-lg border-2 border-black bg-card p-2 shadow-hard">
-              <input
-                type="url"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                placeholder="https://..."
-                className="rounded border-2 border-black px-2 py-1 text-label-small outline-none"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddLink();
-                  if (e.key === 'Escape') setShowLinkInput(false);
-                }}
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={handleAddLink}
-                className="rounded border-2 border-black bg-accent px-2 py-1 text-label-small font-semibold shadow-sm hover:bg-accent/90"
-              >
-                Add
-              </button>
-              {editor.isActive('link') && (
-                <button
-                  type="button"
-                  onClick={handleRemoveLink}
-                  className="rounded border-2 border-black bg-danger px-2 py-1 text-label-small font-semibold text-white shadow-sm hover:bg-danger/90"
-                  title="Remove link"
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Image Upload */}
         <div className="relative">

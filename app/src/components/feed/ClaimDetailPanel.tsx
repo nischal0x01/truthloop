@@ -399,7 +399,7 @@ function VerdictBlock({ claim, userGuess }: { claim: Claim; userGuess?: UserGues
             )}
           </span>
           <span className="text-label-small font-medium text-muted-foreground">
-            {CATEGORY_META[claim.category].label}
+            {CATEGORY_META[claim.category]?.label ?? claim.category}
           </span>
         </div>
 
