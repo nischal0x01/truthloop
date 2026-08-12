@@ -33,7 +33,7 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Check,
   ExternalLink,
@@ -177,13 +177,39 @@ export function ClaimCard({
 
         {/* ── Vote UI (or verdict reveal) ── */}
         <div className="mt-5" onClick={(e) => e.stopPropagation()}>
-          {!locked ? (
-            <VoteButtons isVoting={isVoting} onVote={onVote} />
-          ) : compact ? (
-            <CompactVerdict claim={claim} userGuess={userGuess!} />
-          ) : (
-            <VerdictReveal claim={claim} userGuess={userGuess!} />
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            {!locked ? (
+              <motion.div
+                key="vote-buttons"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <VoteButtons isVoting={isVoting} onVote={onVote} />
+              </motion.div>
+            ) : compact ? (
+              <motion.div
+                key="compact-verdict"
+                initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <CompactVerdict claim={claim} userGuess={userGuess!} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="verdict-reveal"
+                initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <VerdictReveal claim={claim} userGuess={userGuess!} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -259,34 +285,57 @@ function VerdictReveal({
   return (
     <div className="space-y-4">
       {/* Full-width verdict band. Green for Real, Red for Fake. */}
-      <div
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1], delay: 0.05 }}
         className={[
           'rounded-md border-2 border-black px-5 py-4 text-center',
-          isReal
-            ? 'bg-real text-white'
-            : 'bg-fake text-white',
+          isReal ? 'bg-real text-white' : 'bg-fake text-white',
         ].join(' ')}
         role="status"
         aria-live="polite"
       >
-        <p className="text-heading-3 font-semibold tracking-display">
+        <motion.p
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1], delay: 0.15 }}
+          className="text-heading-3 font-semibold tracking-display"
+        >
           {isCorrect ? (
             <>
-              ✓ Correct! <span className="text-label font-semibold">+10 pts</span>
+              ✓ Correct! <motion.span
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1], delay: 0.35 }}
+                className="inline-block text-label font-semibold"
+              >
+                +10 pts
+              </motion.span>
             </>
           ) : (
             <>
               ✗ Wrong — it was <strong className="uppercase">{claim.verdict}</strong>
             </>
           )}
-        </p>
-        <p className="mt-1 text-label-small font-medium uppercase tracking-wider opacity-90">
+        </motion.p>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.9 }}
+          transition={{ duration: 0.5, delay: 0.45 }}
+          className="mt-1 text-label-small font-medium uppercase tracking-wider"
+        >
           You said <strong className="uppercase">{userGuess.answer}</strong>
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
 
       {/* Verdict pill + explanation */}
-      <div className="rounded-md border-2 border-black bg-background p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1], delay: 0.25 }}
+        className="rounded-md border-2 border-black bg-background p-4"
+      >
         <div className="mb-2 flex items-center gap-2">
           <span
             className={[
@@ -317,13 +366,17 @@ function VerdictReveal({
             href={claim.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-1 text-label-small font-medium text-foreground underline underline-offset-4 hover:text-accent-foreground"
+            className="group/link mt-3 inline-flex items-center gap-1 text-label-small font-medium text-foreground underline underline-offset-4 transition-colors hover:text-accent-foreground"
           >
-            <ExternalLink size={12} aria-hidden="true" />
+            <ExternalLink
+              size={12}
+              aria-hidden="true"
+              className="transition-transform duration-300 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-px"
+            />
             Source
           </a>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }
