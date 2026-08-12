@@ -54,6 +54,7 @@ app.use(
           'data:',
           'https://lh3.googleusercontent.com',
           'https://*.googleusercontent.com',
+          'https://res.cloudinary.com',
         ],
       },
     },

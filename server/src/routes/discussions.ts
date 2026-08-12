@@ -41,6 +41,7 @@ const listQuerySchema = z.object({
 const createPostSchema = z.object({
   title: z.string().trim().min(1, 'Title cannot be empty.').max(300),
   body: z.string().trim().min(1, 'Body cannot be empty.').max(2000),
+  imageUrl: z.string().url().nullable().optional(),
 });
 
 const voteSchema = z.object({
@@ -59,14 +60,15 @@ router.get('/', async (req, res) => {
 
   let orderBy;
   if (sort === 'new') {
-    orderBy = schema.discussions.createdAt.desc();
+    orderBy = sql`${schema.discussions.createdAt} DESC`;
   } else if (sort === 'top') {
     orderBy = sql`(${schema.discussions.upvotes} - ${schema.discussions.downvotes}) DESC`;
   } else {
-    // hot: upvotes weighted by recency
-    orderBy = sql`
-      (${schema.discussions.upvotes} / POW(EXTRACT(EPOCH FROM (NOW() - ${schema.discussions.createdAt})) / 3600 + 2, 1.5)) DESC
-    `;
+    // hot: upvotes weighted by recency — use raw SQL to avoid drizzle inference issues
+    orderBy = sql`(
+      "discussions"."upvotes"::float /
+      POW(EXTRACT(EPOCH FROM (NOW() - "discussions"."created_at")) / 3600.0 + 2.0, 1.5)
+    ) DESC`;
   }
 
   const rows = await db
@@ -74,6 +76,7 @@ router.get('/', async (req, res) => {
       id: schema.discussions.id,
       title: schema.discussions.title,
       body: schema.discussions.body,
+      imageUrl: schema.discussions.imageUrl,
       authorId: schema.discussions.userId,
       authorName: schema.users.displayName,
       authorAvatarUrl: schema.users.avatarUrl,
@@ -108,11 +111,11 @@ router.get('/', async (req, res) => {
 /* ── POST /api/discussions ─────────────────────────────────────────────── */
 router.post('/', requireAuth, async (req, res) => {
   const userId = (req.user as { id: string }).id;
-  const { title, body } = createPostSchema.parse(req.body);
+  const { title, body, imageUrl } = createPostSchema.parse(req.body);
 
   const [created] = await db
     .insert(schema.discussions)
-    .values({ userId, title, body })
+    .values({ userId, title, body, imageUrl })
     .returning();
 
   const [author] = await db
@@ -215,7 +218,7 @@ router.get('/:id', async (req, res) => {
 router.patch('/:id', requireAuth, async (req, res) => {
   const userId = (req.user as { id: string }).id;
   const discussionId = z.string().uuid().parse(req.params.id);
-  const { title, body } = createPostSchema.partial().parse(req.body);
+  const { title, body, imageUrl } = createPostSchema.partial().parse(req.body);
 
   const [existing] = await db
     .select({ id: schema.discussions.id, userId: schema.discussions.userId, createdAt: schema.discussions.createdAt })
@@ -234,7 +237,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
 
   const [updated] = await db
     .update(schema.discussions)
-    .set({ title, body, updatedAt: new Date() })
+    .set({ title, body, imageUrl, updatedAt: new Date() })
     .where(and(eq(schema.discussions.id, discussionId), eq(schema.discussions.userId, userId)))
     .returning();
 
@@ -427,6 +430,65 @@ router.post('/:id/comments/:commentId/vote', requireAuth, async (req, res) => {
   });
 
   res.json({ comment: result });
+});
+
+/* ── PATCH /api/discussions/:id/comments/:commentId ─────────────────── */
+router.patch('/:id/comments/:commentId', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+  const commentId = z.string().uuid().parse(req.params.commentId);
+  const { body } = createCommentSchema.omit({ parentCommentId: true }).partial().parse(req.body);
+
+  const [existing] = await db
+    .select({ id: schema.discussionComments.id, userId: schema.discussionComments.userId, createdAt: schema.discussionComments.createdAt })
+    .from(schema.discussionComments)
+    .where(eq(schema.discussionComments.id, commentId))
+    .limit(1);
+
+  if (!existing) throw new AppError(404, 'Comment not found.');
+  if (existing.userId !== userId) throw new AppError(403, 'You can only edit your own comments.');
+
+  // 5-minute edit window
+  const createdAt = new Date(existing.createdAt).getTime();
+  if (Date.now() - createdAt > 5 * 60 * 1000) {
+    throw new AppError(403, 'Edit window has closed (5 minutes).');
+  }
+
+  const [updated] = await db
+    .update(schema.discussionComments)
+    .set({ body, updatedAt: new Date() })
+    .where(and(eq(schema.discussionComments.id, commentId), eq(schema.discussionComments.userId, userId)))
+    .returning();
+
+  res.json({ comment: updated });
+});
+
+/* ── DELETE /api/discussions/:id/comments/:commentId ─────────────────── */
+router.delete('/:id/comments/:commentId', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+  const commentId = z.string().uuid().parse(req.params.commentId);
+  const discussionId = z.string().uuid().parse(req.params.id);
+
+  const [existing] = await db
+    .select({ id: schema.discussionComments.id, userId: schema.discussionComments.userId })
+    .from(schema.discussionComments)
+    .where(eq(schema.discussionComments.id, commentId))
+    .limit(1);
+
+  if (!existing) throw new AppError(404, 'Comment not found.');
+  if (existing.userId !== userId) throw new AppError(403, 'You can only delete your own comments.');
+
+  await db
+    .update(schema.discussionComments)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(eq(schema.discussionComments.id, commentId), eq(schema.discussionComments.userId, userId)));
+
+  // Decrement comment count
+  await db
+    .update(schema.discussions)
+    .set({ commentCount: sql`${schema.discussions.commentCount} - 1`, updatedAt: new Date() })
+    .where(eq(schema.discussions.id, discussionId));
+
+  res.status(204).send();
 });
 
 export default router;

@@ -28,6 +28,7 @@ export const discussions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     body: text('body').notNull(),
+    imageUrl: text('image_url'),
     upvotes: integer('upvotes').notNull().default(0),
     downvotes: integer('downvotes').notNull().default(0),
     commentCount: integer('comment_count').notNull().default(0),

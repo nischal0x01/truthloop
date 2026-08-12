@@ -22,6 +22,8 @@ import {
   Minus,
   Plus,
   ShieldAlert,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { UserAvatar } from '@/components/auth/UserAvatar';
 import { CommentComposer } from './CommentComposer';
@@ -31,10 +33,13 @@ interface CommentThreadProps {
   nodes: CommentNode[];
   onVote: (commentId: string, vote: CommentVoteValue) => void;
   onReply: (parentCommentId: string, body: string) => Promise<void>;
+  onEdit?: (commentId: string, body: string) => Promise<void>;
+  onDelete?: (commentId: string) => void;
   canInteract: boolean;
+  currentUserId?: string;
 }
 
-export function CommentThread({ nodes, onVote, onReply, canInteract }: CommentThreadProps) {
+export function CommentThread({ nodes, onVote, onReply, onEdit, onDelete, canInteract, currentUserId }: CommentThreadProps) {
   return (
     <ul className="space-y-3" role="list">
       {nodes.map((node) => (
@@ -43,8 +48,11 @@ export function CommentThread({ nodes, onVote, onReply, canInteract }: CommentTh
           node={node}
           onVote={onVote}
           onReply={onReply}
+          onEdit={onEdit}
+          onDelete={onDelete}
           canInteract={canInteract}
           depth={0}
+          currentUserId={currentUserId}
         />
       ))}
     </ul>
@@ -55,8 +63,11 @@ interface CommentItemProps {
   node: CommentNode;
   onVote: (commentId: string, vote: CommentVoteValue) => void;
   onReply: (parentCommentId: string, body: string) => Promise<void>;
+  onEdit?: (commentId: string, body: string) => Promise<void>;
+  onDelete?: (commentId: string) => void;
   canInteract: boolean;
   depth: number;
+  currentUserId?: string;
 }
 
 /** Depth colors for left rail — cycles through semantic colors */
@@ -72,18 +83,30 @@ function CommentItem({
   node,
   onVote,
   onReply,
+  onEdit,
+  onDelete,
   canInteract,
   depth,
+  currentUserId,
 }: CommentItemProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [replying, setReplying] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(node.body);
 
   const score = node.upvotes - node.downvotes;
   const hasKids = node.children.length > 0;
   const railColor = DEPTH_COLORS[depth % DEPTH_COLORS.length];
+  const canModify = currentUserId === node.userId && !node.isDeleted;
 
   // Clicking the active arrow again clears the vote (0), matching Reddit.
   const cast = (dir: 1 | -1) => onVote(node.id, node.myVote === dir ? 0 : dir);
+
+  const handleSaveEdit = async () => {
+    if (!editBody.trim() || !onEdit) return;
+    await onEdit(node.id, editBody.trim());
+    setEditing(false);
+  };
 
   return (
     <motion.li
@@ -195,15 +218,42 @@ function CommentItem({
             </div>
 
             {/* Comment body */}
-            <p
-              className={[
-                'mt-2 text-label leading-relaxed',
-                node.isDeleted ? 'text-muted-foreground italic' : 'text-foreground/90',
-              ].join(' ')}
-              style={{ overflowWrap: 'anywhere' }}
-            >
-              {node.isDeleted ? '[This comment has been deleted]' : node.body}
-            </p>
+            {editing ? (
+              <div className="mt-2 space-y-2">
+                <textarea
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                  className="w-full rounded-lg border-2 border-black bg-card px-3 py-2 text-label shadow-hard-sm outline-none focus:ring-2 focus:ring-black"
+                  rows={3}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    className="rounded-lg border-2 border-black bg-accent px-3 py-1 text-label-small font-semibold shadow-hard-sm hover:bg-accent/90"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEditing(false); setEditBody(node.body); }}
+                    className="rounded-lg border-2 border-black bg-card px-3 py-1 text-label-small font-semibold shadow-hard-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p
+                className={[
+                  'mt-2 text-label leading-relaxed',
+                  node.isDeleted ? 'text-muted-foreground italic' : 'text-foreground/90',
+                ].join(' ')}
+                style={{ overflowWrap: 'anywhere' }}
+              >
+                {node.isDeleted ? '[This comment has been deleted]' : node.body}
+              </p>
+            )}
 
             {/* Action buttons */}
             {canInteract && !node.isDeleted && (
@@ -221,6 +271,27 @@ function CommentItem({
                   <CornerDownRight size={12} aria-hidden="true" />
                   {replying ? 'Cancel' : 'Reply'}
                 </button>
+
+                {canModify && !editing && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all bg-card hover:bg-muted"
+                    >
+                      <Pencil size={12} aria-hidden="true" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete?.(node.id)}
+                      className="inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all bg-card hover:bg-danger/20 hover:text-danger"
+                    >
+                      <Trash2 size={12} aria-hidden="true" />
+                      Delete
+                    </button>
+                  </>
+                )}
 
                 {/* Collapse toggle */}
                 {hasKids && (
@@ -298,8 +369,11 @@ function CommentItem({
                   node={child}
                   onVote={onVote}
                   onReply={onReply}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
                   canInteract={canInteract}
                   depth={depth + 1}
+                  currentUserId={currentUserId}
                 />
               ))}
             </ul>

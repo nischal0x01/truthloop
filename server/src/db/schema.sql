@@ -322,6 +322,7 @@ CREATE TABLE IF NOT EXISTS discussions (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title VARCHAR(300) NOT NULL CHECK (char_length(title) > 0 AND char_length(title) <= 300),
   body TEXT NOT NULL CHECK (char_length(body) > 0 AND char_length(body) <= 2000),
+  image_url TEXT,
   upvotes INTEGER NOT NULL DEFAULT 0,
   downvotes INTEGER NOT NULL DEFAULT 0,
   comment_count INTEGER NOT NULL DEFAULT 0,

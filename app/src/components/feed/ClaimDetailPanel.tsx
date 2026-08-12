@@ -13,10 +13,10 @@
  * unvoted claim shows the vote buttons and a "vote to unlock" notice instead.
  */
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check, ArrowUp, ArrowDown, MessageCircle } from 'lucide-react';
+import { ExternalLink, Loader2, Lock, MessagesSquare, X, Check, ArrowUp, ArrowDown } from 'lucide-react';
 import { CategoryPill } from './CategoryPill';
 import { VoteButtons } from './VoteButtons';
 import { VoteSlider } from './VoteSlider';
@@ -151,6 +151,41 @@ export function ClaimDetailPanel({
     },
   });
 
+  /* ── Edit a comment ── */
+  const editMutation = useMutation({
+    mutationFn: ({ commentId, body }: { commentId: string; body: string }) =>
+      commentsApi.update(commentId, body),
+    onSuccess: ({ comment }) => {
+      qc.setQueryData<{ comments: Comment[]; maxDepth: number }>(key, (cur) =>
+        cur
+          ? {
+              ...cur,
+              comments: cur.comments.map((c) =>
+                c.id === comment.id ? { ...c, body: comment.body } : c
+              ),
+            }
+          : cur
+      );
+    },
+  });
+
+  /* ── Delete a comment ── */
+  const deleteMutation = useMutation({
+    mutationFn: (commentId: string) => commentsApi.delete(commentId),
+    onSuccess: (_result, commentId) => {
+      qc.setQueryData<{ comments: Comment[]; maxDepth: number }>(key, (cur) =>
+        cur
+          ? {
+              ...cur,
+              comments: cur.comments.map((c) =>
+                c.id === commentId ? { ...c, isDeleted: true, body: '[deleted]' } : c
+              ),
+            }
+          : cur
+      );
+    },
+  });
+
   return (
     <section
       className="flex flex-col h-full bg-background relative"
@@ -266,6 +301,14 @@ export function ClaimDetailPanel({
                 onVote={(commentId, vote) => voteMutation.mutate({ commentId, vote })}
                 onReply={async (parentCommentId, body) => {
                   await createMutation.mutateAsync({ parentCommentId, body });
+                }}
+                onEdit={async (commentId, body) => {
+                  await editMutation.mutateAsync({ commentId, body });
+                }}
+                onDelete={(commentId) => {
+                  if (window.confirm('Delete this comment?')) {
+                    deleteMutation.mutate(commentId);
+                  }
                 }}
               />
             )}

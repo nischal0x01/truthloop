@@ -23,10 +23,13 @@ import {
   Clock,
   Award,
   ChevronLeft,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
 import { UserAvatar } from '@/components/auth/UserAvatar';
 import { CommentComposer } from '@/components/feed/CommentComposer';
+import { RichTextEditor } from '@/components/feed/RichTextEditor';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -87,9 +90,30 @@ export function Discussions() {
 
   // Create post mutation
   const createPostMutation = useMutation({
-    mutationFn: (input: { title: string; body: string }) => discussionsApi.create(input),
+    mutationFn: (input: { title: string; body: string; imageUrl?: string | null }) => discussionsApi.create(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: discussionKeys.list() });
+    },
+  });
+
+  // Update post mutation
+  const updatePostMutation = useMutation({
+    mutationFn: ({ postId, title, body, imageUrl }: { postId: string; title?: string; body?: string; imageUrl?: string | null }) =>
+      discussionsApi.update(postId, { title, body, imageUrl }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: discussionKeys.list() });
+      if (selectedPostId === result.post.id) {
+        qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId) });
+      }
+    },
+  });
+
+  // Delete post mutation
+  const deletePostMutation = useMutation({
+    mutationFn: (postId: string) => discussionsApi.delete(postId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: discussionKeys.list() });
+      setSelectedPostId(null);
     },
   });
 
@@ -112,6 +136,25 @@ export function Discussions() {
     },
   });
 
+  // Update comment mutation
+  const updateCommentMutation = useMutation({
+    mutationFn: ({ discussionId, commentId, body }: { discussionId: string; commentId: string; body: string }) =>
+      discussionsApi.updateComment(discussionId, commentId, body),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
+    },
+  });
+
+  // Delete comment mutation
+  const deleteCommentMutation = useMutation({
+    mutationFn: ({ discussionId, commentId }: { discussionId: string; commentId: string }) =>
+      discussionsApi.deleteComment(discussionId, commentId),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: discussionKeys.detail(variables.discussionId) });
+      qc.invalidateQueries({ queryKey: discussionKeys.list() });
+    },
+  });
+
   const handleVotePost = useCallback(
     (postId: string, vote: 1 | -1 | 0) => {
       voteMutation.mutate({ postId, vote });
@@ -131,6 +174,23 @@ export function Discussions() {
       await createCommentMutation.mutateAsync({ discussionId, parentCommentId, body });
     },
     [createCommentMutation]
+  );
+
+  const handleEditPost = useCallback(
+    (post: DiscussionPost) => {
+      // Re-save with existing data — edit UI (PostDetail inline or modal) will call this with new values
+      updatePostMutation.mutate({ postId: post.id, title: post.title, body: post.body, imageUrl: post.imageUrl });
+    },
+    [updatePostMutation]
+  );
+
+  const handleDeletePost = useCallback(
+    (postId: string) => {
+      if (window.confirm('Are you sure you want to delete this post?')) {
+        deletePostMutation.mutate(postId);
+      }
+    },
+    [deletePostMutation]
   );
 
   return (
@@ -187,6 +247,9 @@ export function Discussions() {
                       onSelect={() => setSelectedPostId(post.id)}
                       onVote={(v) => handleVotePost(post.id, v)}
                       isVoting={voteMutation.isPending && voteMutation.variables?.postId === post.id}
+                      onEdit={user?.id === post.authorId ? () => handleEditPost(post) : undefined}
+                      onDelete={user?.id === post.authorId ? () => handleDeletePost(post.id) : undefined}
+                      canModify={user?.id === post.authorId}
                     />
                   ))}
                 </div>
@@ -210,8 +273,17 @@ export function Discussions() {
                   onVotePost={(v) => handleVotePost(detailQuery.data!.post.id, v)}
                   onVoteComment={(commentId, v) => handleVoteComment(commentId, v, detailQuery.data!.post.id)}
                   onReply={(parentId, body) => handleCreateComment(detailQuery.data!.post.id, parentId, body)}
+                  onEditComment={async (commentId: string, body: string) => {
+                    await updateCommentMutation.mutateAsync({ discussionId: detailQuery.data!.post.id, commentId, body });
+                  }}
+                  onDeleteComment={(commentId) => {
+                    if (window.confirm('Delete this comment?')) {
+                      deleteCommentMutation.mutate({ discussionId: detailQuery.data!.post.id, commentId });
+                    }
+                  }}
                   isPostVoting={voteMutation.isPending && voteMutation.variables?.postId === detailQuery.data?.post.id}
                   canInteract={!!user}
+                  currentUserId={user?.id}
                 />
               ) : null}
             </motion.div>
@@ -263,9 +335,12 @@ interface PostCardProps {
   onSelect: () => void;
   onVote: (vote: 1 | -1 | 0) => void;
   isVoting?: boolean;
+  onEdit?: (postId: string) => void;
+  onDelete?: (postId: string) => void;
+  canModify?: boolean;
 }
 
-function PostCard({ post, onSelect, onVote, isVoting }: PostCardProps) {
+function PostCard({ post, onSelect, onVote, isVoting, onEdit, onDelete, canModify }: PostCardProps) {
   const score = post.upvotes - post.downvotes;
   const cast = (dir: 1 | -1) => {
     if (isVoting) return;
@@ -336,12 +411,47 @@ function PostCard({ post, onSelect, onVote, isVoting }: PostCardProps) {
 
         {/* Content */}
         <div className="min-w-0 flex-1 p-4">
-          <h2 className="font-display text-heading-3 font-semibold leading-tight text-foreground group-hover:text-pink-accent">
-            {post.title}
-          </h2>
-          <p className="mt-1.5 line-clamp-2 text-label text-foreground/80">
-            {post.body}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="font-display text-heading-3 font-semibold leading-tight text-foreground group-hover:text-pink-accent flex-1">
+              {post.title}
+            </h2>
+            {canModify && (
+              <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(post.id)}
+                    className="rounded p-1.5 border-2 border-black bg-card hover:bg-muted transition-all"
+                    aria-label="Edit post"
+                  >
+                    <Pencil size={12} aria-hidden="true" />
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(post.id)}
+                    className="rounded p-1.5 border-2 border-black bg-card hover:bg-danger/20 hover:text-danger transition-all"
+                    aria-label="Delete post"
+                  >
+                    <Trash2 size={12} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div
+            className="mt-1.5 line-clamp-2 text-label text-foreground/80 discussion-body"
+            dangerouslySetInnerHTML={{ __html: post.body }}
+          />
+
+          {post.imageUrl && (
+            <img
+              src={post.imageUrl}
+              alt="Attachment"
+              className="mt-3 max-h-48 rounded-lg border-2 border-black object-cover"
+            />
+          )}
 
           <div className="mt-3 flex items-center justify-between gap-3">
             {/* Author + time */}
@@ -380,8 +490,11 @@ interface PostDetailProps {
   onVotePost: (vote: 1 | -1 | 0) => void;
   onVoteComment: (commentId: string, vote: DiscussionVoteValue) => void;
   onReply: (parentCommentId: string | null, body: string) => Promise<void>;
+  onEditComment: (commentId: string, body: string) => Promise<void>;
+  onDeleteComment: (commentId: string) => void;
   isPostVoting?: boolean;
   canInteract: boolean;
+  currentUserId?: string;
 }
 
 function PostDetail({
@@ -391,8 +504,11 @@ function PostDetail({
   onVotePost,
   onVoteComment,
   onReply,
+  onEditComment,
+  onDeleteComment,
   isPostVoting,
   canInteract,
+  currentUserId,
 }: PostDetailProps) {
   const score = post.upvotes - post.downvotes;
   const tree = buildDiscussionTree(comments);
@@ -484,7 +600,10 @@ function PostDetail({
               </span>
             </div>
 
-            <p className="mt-4 text-label leading-relaxed text-foreground/90">{post.body}</p>
+            <div
+              className="mt-4 text-label leading-relaxed text-foreground/90 discussion-body"
+              dangerouslySetInnerHTML={{ __html: post.body }}
+            />
           </div>
         </div>
       </article>
@@ -501,7 +620,10 @@ function PostDetail({
             onReply={async (parentId, body) => {
               await onReply(parentId, body);
             }}
+            onEdit={onEditComment}
+            onDelete={onDeleteComment}
             canInteract={canInteract}
+            currentUserId={currentUserId}
           />
         </div>
       )}
@@ -530,7 +652,7 @@ function PostDetail({
 /* ── Create post button + modal ────────────────────────────────────────────── */
 
 interface CreatePostButtonProps {
-  onCreate: (title: string, body: string) => void;
+  onCreate: (title: string, body: string, imageUrl?: string | null) => void;
   isPending: boolean;
 }
 
@@ -538,12 +660,14 @@ function CreatePostButton({ onCreate, isPending }: CreatePostButtonProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!title.trim() || !body.trim()) return;
-    await onCreate(title.trim(), body.trim());
+    await onCreate(title.trim(), body.trim(), imageUrl);
     setTitle('');
     setBody('');
+    setImageUrl(null);
     setOpen(false);
   };
 
@@ -581,7 +705,7 @@ function CreatePostButton({ onCreate, isPending }: CreatePostButtonProps) {
               aria-modal="true"
               aria-label="Create new post"
             >
-              <div className="w-full max-w-lg rounded-2xl border-2 border-black bg-card shadow-hard-lg">
+              <div className="w-full max-w-lg rounded-2xl border-2 border-black bg-card shadow-hard-lg max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b-2 border-black px-5 py-4">
                   <h2 className="font-display text-heading-3 font-semibold">New Discussion</h2>
@@ -619,24 +743,16 @@ function CreatePostButton({ onCreate, isPending }: CreatePostButtonProps) {
                   </div>
 
                   <div>
-                    <label
-                      htmlFor="post-body"
-                      className="mb-1.5 block text-label-small font-semibold"
-                    >
+                    <label className="mb-1.5 block text-label-small font-semibold">
                       Body
                     </label>
-                    <textarea
-                      id="post-body"
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
+                    <RichTextEditor
+                      content={body}
+                      onChange={setBody}
                       placeholder="Share your thoughts, questions, or insights…"
-                      rows={5}
                       maxLength={2000}
-                      className="w-full resize-y rounded-lg border-2 border-black bg-card px-3 py-2.5 text-label shadow-hard-sm outline-none focus:ring-2 focus:ring-black placeholder:text-muted-foreground"
+                      onImageUpload={setImageUrl}
                     />
-                    <p className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
-                      {body.length}/2000
-                    </p>
                   </div>
                 </div>
 
@@ -730,10 +846,13 @@ interface DiscussionCommentThreadProps {
   nodes: import('@/lib/discussions').DiscussionCommentNode[];
   onVote: (commentId: string, vote: DiscussionVoteValue) => void;
   onReply: (parentCommentId: string, body: string) => Promise<void>;
+  onEdit: (commentId: string, body: string) => Promise<void>;
+  onDelete: (commentId: string) => void;
   canInteract: boolean;
+  currentUserId?: string;
 }
 
-export function DiscussionCommentThread({ nodes, onVote, onReply, canInteract }: DiscussionCommentThreadProps) {
+export function DiscussionCommentThread({ nodes, onVote, onReply, onEdit, onDelete, canInteract, currentUserId }: DiscussionCommentThreadProps) {
   return (
     <ul className="space-y-3" role="list">
       {nodes.map((node) => (
@@ -742,8 +861,11 @@ export function DiscussionCommentThread({ nodes, onVote, onReply, canInteract }:
           node={node}
           onVote={onVote}
           onReply={onReply}
+          onEdit={onEdit}
+          onDelete={onDelete}
           canInteract={canInteract}
           depth={0}
+          currentUserId={currentUserId}
         />
       ))}
     </ul>
@@ -754,19 +876,31 @@ interface DiscussionCommentItemProps {
   node: import('@/lib/discussions').DiscussionCommentNode;
   onVote: (commentId: string, vote: DiscussionVoteValue) => void;
   onReply: (parentCommentId: string, body: string) => Promise<void>;
+  onEdit: (commentId: string, body: string) => Promise<void>;
+  onDelete: (commentId: string) => void;
   canInteract: boolean;
   depth: number;
+  currentUserId?: string;
 }
 
-function DiscussionCommentItem({ node, onVote, onReply, canInteract, depth }: DiscussionCommentItemProps) {
+function DiscussionCommentItem({ node, onVote, onReply, onEdit, onDelete, canInteract, depth, currentUserId }: DiscussionCommentItemProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [replying, setReplying] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(node.body);
 
   const score = node.upvotes - node.downvotes;
   const hasKids = node.children.length > 0;
   const railColor = DEPTH_COLORS[depth % DEPTH_COLORS.length];
+  const canModify = currentUserId === node.userId && !node.isDeleted;
 
   const cast = (dir: 1 | -1) => onVote(node.id, node.myVote === dir ? 0 : dir);
+
+  const handleSaveEdit = async () => {
+    if (!editBody.trim()) return;
+    await onEdit(node.id, editBody.trim());
+    setEditing(false);
+  };
 
   return (
     <motion.li
@@ -839,9 +973,41 @@ function DiscussionCommentItem({ node, onVote, onReply, canInteract, depth }: Di
               <span className="text-label-small text-muted-foreground shrink-0">{shortTimeAgo(node.createdAt)}</span>
             </div>
 
-            <p className={['mt-2 text-label leading-relaxed', node.isDeleted ? 'text-muted-foreground italic' : 'text-foreground/90'].join(' ')} style={{ overflowWrap: 'anywhere' }}>
-              {node.isDeleted ? '[This comment has been deleted]' : node.body}
-            </p>
+            {/* Show edit mode if editing */}
+            {editing ? (
+              <div className="mt-2 space-y-2">
+                <textarea
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                  className="w-full rounded-lg border-2 border-black bg-card px-3 py-2 text-label shadow-hard-sm outline-none focus:ring-2 focus:ring-black"
+                  rows={3}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    className="rounded-lg border-2 border-black bg-accent px-3 py-1 text-label-small font-semibold shadow-hard-sm hover:bg-accent/90"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEditing(false); setEditBody(node.body); }}
+                    className="rounded-lg border-2 border-black bg-card px-3 py-1 text-label-small font-semibold shadow-hard-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : node.isDeleted ? (
+              <p className="mt-2 text-label text-muted-foreground italic">[This comment has been deleted]</p>
+            ) : (
+              <div
+                className="mt-2 text-label leading-relaxed text-foreground/90 discussion-body"
+                style={{ overflowWrap: 'anywhere' }}
+                dangerouslySetInnerHTML={{ __html: node.body }}
+              />
+            )}
 
             {canInteract && !node.isDeleted && (
               <div className="mt-2 flex items-center gap-3">
@@ -852,6 +1018,26 @@ function DiscussionCommentItem({ node, onVote, onReply, canInteract, depth }: Di
                 >
                   Reply
                 </button>
+                {canModify && !editing && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all bg-card hover:bg-muted"
+                    >
+                      <Pencil size={12} aria-hidden="true" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(node.id)}
+                      className="inline-flex items-center gap-1.5 rounded-md border-2 border-black px-2 py-1 text-label-small font-medium transition-all bg-card hover:bg-danger/20 hover:text-danger"
+                    >
+                      <Trash2 size={12} aria-hidden="true" />
+                      Delete
+                    </button>
+                  </>
+                )}
                 {hasKids && (
                   <button
                     type="button"
@@ -910,8 +1096,11 @@ function DiscussionCommentItem({ node, onVote, onReply, canInteract, depth }: Di
                   node={child}
                   onVote={onVote}
                   onReply={onReply}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
                   canInteract={canInteract}
                   depth={depth + 1}
+                  currentUserId={currentUserId}
                 />
               ))}
             </ul>
