@@ -95,6 +95,20 @@ function ClaimsRoute({ claimId }: { claimId?: string }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Post-OAuth redirect destination (set by ProtectedRoute before redirecting
+  // to signin). MUST run before any early return — React hooks must be called
+  // in the same order on every render. Calling useEffect() after a conditional
+  // return is the classic cause of error #300 ("Rendered more hooks than
+  // during the previous render") on logout / status transitions.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const redirectTo = sessionStorage.getItem('authRedirectTo');
+    if (redirectTo) {
+      sessionStorage.removeItem('authRedirectTo');
+      navigate(redirectTo, { replace: true });
+    }
+  }, [status, navigate]);
+
   if (status === 'loading') {
     return (
       <div
@@ -110,15 +124,6 @@ function ClaimsRoute({ claimId }: { claimId?: string }) {
   if (status === 'unauthenticated') {
     return <Navigate to="/signin" replace />;
   }
-
-  // Post-OAuth redirect destination (set by ProtectedRoute before redirecting to signin)
-  useEffect(() => {
-    const redirectTo = sessionStorage.getItem('authRedirectTo');
-    if (redirectTo) {
-      sessionStorage.removeItem('authRedirectTo');
-      navigate(redirectTo, { replace: true });
-    }
-  }, [navigate]);
 
   return <Feed initialSearch={location.search} selectedClaimId={claimId} />;
 }

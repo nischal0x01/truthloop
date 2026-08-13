@@ -477,6 +477,13 @@ export function Profile() {
     queryKey: profileKeys.me(),
     queryFn: () => profileApi.me(),
     enabled: status === 'authenticated',
+    // Don't retry on 401 — the auth context already knows the user is signed
+    // out and is redirecting them away. Retrying just adds noise.
+    retry: (failureCount, error) => {
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 401 || status === 403) return false;
+      return failureCount < 1;
+    },
   });
 
   if (!user) return null;

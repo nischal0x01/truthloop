@@ -15,7 +15,10 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:comments": "tsx src/db/seed-comments.ts",
     "migrate:prod": "tsx scripts/migrate-prod.ts",
-    "migrate:prod:reset": "tsx scripts/migrate-prod.ts --reset --yes"
+    "migrate:prod:reset": "tsx scripts/migrate-prod.ts --reset --yes",
+    "seed:prod": "tsx scripts/seed-prod.ts",
+    "seed:prod:dry": "tsx scripts/seed-prod.ts --dry-run",
+    "seed:prod:yes": "tsx scripts/seed-prod.ts --yes"
   },
   "dependencies": {
     "@types/multer": "^2.2.0",

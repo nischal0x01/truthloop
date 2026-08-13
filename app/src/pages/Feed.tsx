@@ -55,13 +55,18 @@ interface FeedProps {
 }
 
 export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
-  const { user } = useAuth();
+  const { user, status } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategory, setSelectedCategory] = useState<ClaimCategory | null>(null);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
   const reduce = useReducedMotion();
+
+  // Gate auth-required queries so they don't fire after sign-out (the user is
+  // already being bounced to /signin by ClaimsRoute, but during the transition
+  // we'd otherwise hit /api/claims/me/guesses and get a noisy 401).
+  const isAuthed = status === 'authenticated';
 
   const EASE = [0.32, 0.72, 0, 1] as const;
 
@@ -92,6 +97,9 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const guessesQuery = useQuery({
     queryKey: claimKeys.myGuesses(),
     queryFn: () => claimsApi.myGuesses().then((r) => r.guesses),
+    // Only the signed-in user has guesses. Don't fire on the public landing
+    // page or after sign-out.
+    enabled: isAuthed,
   });
 
   /* ── Vote mutation ── */

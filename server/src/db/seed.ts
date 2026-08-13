@@ -3,7 +3,8 @@
  * load (CLAUDE.md: "Heavy demo seed is mandatory"). Idempotent: re-running
  * upserts users + badges and skips rows that already exist.
  *
- * Run:  npm run db:seed
+ * Run:  npm run db:seed             (dev/local)
+ *       npm run seed:prod           (prod — wrapper in scripts/seed-prod.ts)
  *
  * Covers every "never cut" feature:
  *   1. Voting loop         → claims + demo's guesses
@@ -16,6 +17,9 @@
  * AI-generated fields (scam forecast narrative, weekly blind-spot narrative)
  * are written as plausible placeholders. The real Claude prompts regenerate
  * them on schedule / on-demand in production.
+ *
+ * The body is exported as `runSeed()` so the prod wrapper can import it
+ * without forking the data definitions.
  */
 import 'dotenv/config';
 import { and, eq } from 'drizzle-orm';
@@ -152,14 +156,14 @@ const BADGES: Array<typeof schema.badges.$inferInsert> = [
 
 /* ── Helpers ── */
 
-async function ensureUser(input: typeof schema.users.$inferInsert): Promise<string> {
+async function ensureUser(input: typeof schema.users.$inferInsert, dryRun = false): Promise<string> {
   const [existing] = await db
     .select({ id: schema.users.id })
     .from(schema.users)
     .where(eq(schema.users.email, input.email))
     .limit(1);
   if (existing) return existing.id;
-
+  if (dryRun) return '(dry-run)';
   const [created] = await db
     .insert(schema.users)
     .values(input)
@@ -167,24 +171,26 @@ async function ensureUser(input: typeof schema.users.$inferInsert): Promise<stri
   return created.id;
 }
 
-async function ensureUserSettings(userId: string) {
+async function ensureUserSettings(userId: string, dryRun = false) {
   const [existing] = await db
     .select({ userId: schema.userSettings.userId })
     .from(schema.userSettings)
     .where(eq(schema.userSettings.userId, userId))
     .limit(1);
-  if (!existing) {
-    await db.insert(schema.userSettings).values({ userId });
-  }
+  if (existing) return;
+  if (dryRun) return;
+  await db.insert(schema.userSettings).values({ userId });
 }
 
-async function ensureBadge(b: typeof schema.badges.$inferInsert) {
+async function ensureBadge(b: typeof schema.badges.$inferInsert, dryRun = false) {
   const [existing] = await db
     .select({ slug: schema.badges.slug })
     .from(schema.badges)
     .where(eq(schema.badges.slug, b.slug))
     .limit(1);
-  if (!existing) await db.insert(schema.badges).values(b);
+  if (existing) return;
+  if (dryRun) return;
+  await db.insert(schema.badges).values(b);
 }
 
 /** Start of ISO week containing `d` (Monday). */
@@ -197,13 +203,38 @@ function isoWeekStart(d: Date): string {
 
 /* ── Main ── */
 
-async function main() {
-  console.log('→ Seeding demo data…');
+export interface SeedSummary {
+  demoUserId: string;
+  users: { demo: string; leaderboard: number };
+  claims: { inserted: number; total: number };
+  guesses: number;
+  badges: { defs: number; earned: number };
+  weeklyReport: { weekStarting: string; inserted: boolean };
+  scamForecast: { date: string; inserted: boolean; items: number };
+}
+
+export interface SeedOptions {
+  /** When true, log each step but skip writes (for dry-run / previews). */
+  dryRun?: boolean;
+  /** When true, print extra per-row detail (used by the prod wrapper). */
+  verbose?: boolean;
+}
+
+/**
+ * Run the heavy demo seed. Idempotent — re-running is safe and only inserts
+ * rows that don't already exist. Returns a structured summary so callers
+ * (e.g. the prod wrapper) can show before/after diffs.
+ */
+export async function runSeed(opts: SeedOptions = {}): Promise<SeedSummary> {
+  const { dryRun = false, verbose = false } = opts;
+  const log = (msg: string) => console.log(`  ${msg}`);
+
+  log(`→ Seeding demo data${dryRun ? '  [DRY RUN — no writes]' : ''}…`);
 
   // 1. Users ────────────────────────────────────────────────────────────────
-  const demoId = await ensureUser({ ...DEMO_USER, isAdmin: true });
-  await ensureUserSettings(demoId);
-  console.log(`  demo user: ${DEMO_USER.email} (${demoId})`);
+  const demoId = await ensureUser({ ...DEMO_USER, isAdmin: true }, dryRun);
+  await ensureUserSettings(demoId, dryRun);
+  log(`demo user: ${DEMO_USER.email} (${demoId})`);
 
   for (const u of LEADERBOARD_CAST) {
     const id = await ensureUser({
@@ -211,14 +242,15 @@ async function main() {
       displayName: u.name,
       points: u.points,
       streakDays: u.streak,
-    });
-    await ensureUserSettings(id);
+    }, dryRun);
+    await ensureUserSettings(id, dryRun);
+    if (verbose) log(`  + ${u.handle} (${u.points} pts)`);
   }
-  console.log(`  +${LEADERBOARD_CAST.length} leaderboard cast`);
+  log(`+${LEADERBOARD_CAST.length} leaderboard cast`);
 
   // 2. Claims ───────────────────────────────────────────────────────────────
   let insertedClaims = 0;
-  let claimIds: string[] = [];
+  const claimIds: string[] = [];
   for (const c of CLAIMS) {
     const [existing] = await db
       .select({ id: schema.claims.id })
@@ -229,6 +261,11 @@ async function main() {
       claimIds.push(existing.id);
       continue;
     }
+    if (dryRun) {
+      claimIds.push(`(dry-run)`);
+      insertedClaims++;
+      continue;
+    }
     const [created] = await db
       .insert(schema.claims)
       .values({ ...c, publishedAt: new Date(), isPublished: true })
@@ -236,7 +273,7 @@ async function main() {
     claimIds.push(created.id);
     insertedClaims++;
   }
-  console.log(`  ${insertedClaims} new claims (${claimIds.length} total)`);
+  log(`${insertedClaims} new claims (${claimIds.length} total)`);
 
   // 3. Demo guesses (mixed accuracy) ────────────────────────────────────────
   // Pattern: demo is GREAT at science/politics, WEAK at health/tech
@@ -259,27 +296,34 @@ async function main() {
   ];
   for (const g of guesses) {
     const claimId = claimIds[g.claimIndex];
-    if (!claimId) continue;
+    if (!claimId || claimId === '(dry-run)') continue;
     const isCorrect = g.answer === g.expected;
     await db
       .insert(schema.guesses)
       .values({ userId: demoId, claimId, userAnswer: g.answer, isCorrect })
       .onConflictDoNothing();
   }
-  console.log(`  ${guesses.length} demo guesses (mixed accuracy)`);
+  log(`${guesses.length} demo guesses (mixed accuracy)`);
 
   // 4. Badges ───────────────────────────────────────────────────────────────
-  for (const b of BADGES) await ensureBadge(b);
-  console.log(`  ${BADGES.length} badge defs`);
+  for (const b of BADGES) await ensureBadge(b, dryRun);
+  log(`${BADGES.length} badge defs`);
 
   // Demo earned 4 badges
+  let earnedInserted = 0;
   for (const slug of ['first-vote', 'streak-7', 'sharp-eye', 'discussant']) {
-    await db
+    if (dryRun) {
+      earnedInserted++;
+      continue;
+    }
+    const res = await db
       .insert(schema.userBadges)
       .values({ userId: demoId, badgeSlug: slug })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ userId: schema.userBadges.userId });
+    if (res.length > 0) earnedInserted++;
   }
-  console.log(`  demo earned 4 badges`);
+  log(`demo earned 4 badges (${earnedInserted} new)`);
 
   // 5. Weekly blind-spot report ────────────────────────────────────────────
   const weekStart = isoWeekStart(new Date());
@@ -291,19 +335,25 @@ async function main() {
       eq(schema.weeklyReports.weekStarting, weekStart),
     ))
     .limit(1);
+  let reportInserted = false;
   if (!existingReport) {
-    await db.insert(schema.weeklyReports).values({
-      userId: demoId,
-      weekStarting: weekStart,
-      totalGuesses: 9,
-      correctGuesses: 6,
-      blindSpotCategory: 'health',
-      blindSpotNarrative:
-        "You correctly identified 100% of science and politics claims this week, but you fell for both fake health claims — the kind that promise quick, dramatic cures for serious conditions. The pattern: when a claim sounds hopeful and specific (a number, a timeline, a food), slow down. Real medical breakthroughs don't fit in a tweet.",
-      globalAverageAccuracy: 0.58,
-      userAccuracy: 0.67,
-    });
-    console.log(`  weekly report for week of ${weekStart}`);
+    if (!dryRun) {
+      await db.insert(schema.weeklyReports).values({
+        userId: demoId,
+        weekStarting: weekStart,
+        totalGuesses: 9,
+        correctGuesses: 6,
+        blindSpotCategory: 'health',
+        blindSpotNarrative:
+          "You correctly identified 100% of science and politics claims this week, but you fell for both fake health claims — the kind that promise quick, dramatic cures for serious conditions. The pattern: when a claim sounds hopeful and specific (a number, a timeline, a food), slow down. Real medical breakthroughs don't fit in a tweet.",
+        globalAverageAccuracy: 0.58,
+        userAccuracy: 0.67,
+      });
+      reportInserted = true;
+    }
+    log(`weekly report for week of ${weekStart}${dryRun ? ' [dry-run]' : ''}`);
+  } else {
+    log(`weekly report for week of ${weekStart} (already exists)`);
   }
 
   // 6. Scam forecast (today) ───────────────────────────────────────────────
@@ -315,14 +365,21 @@ async function main() {
     .limit(1);
 
   let forecastId: string;
+  let forecastInserted = false;
   if (existingForecast) {
     forecastId = existingForecast.id;
+    log(`scam forecast for ${today} (already exists)`);
   } else {
-    const [created] = await db
-      .insert(schema.scamForecasts)
-      .values({ forecastDate: today })
-      .returning({ id: schema.scamForecasts.id });
-    forecastId = created.id;
+    if (dryRun) {
+      forecastId = '(dry-run)';
+    } else {
+      const [created] = await db
+        .insert(schema.scamForecasts)
+        .values({ forecastDate: today })
+        .returning({ id: schema.scamForecasts.id });
+      forecastId = created.id;
+      forecastInserted = true;
+    }
     const items: Array<typeof schema.scamForecastItems.$inferInsert> = [
       {
         severity: 'high',
@@ -350,18 +407,39 @@ async function main() {
       },
     ];
     for (const it of items) {
+      if (dryRun) continue;
       await db.insert(schema.scamForecastItems).values({ ...it, forecastId });
     }
-    console.log(`  scam forecast for ${today} (3 items)`);
+    log(`scam forecast for ${today} (3 items)${dryRun ? ' [dry-run]' : ''}`);
   }
 
-  console.log('\n✓ Demo seed complete.\n');
-  console.log('  Next: npm run db:seed:comments  (Reddit-style threads)');
+  log('');
+  log('✓ Demo seed complete.');
+  log('  Next: npm run db:seed:comments  (Reddit-style threads)');
+
+  return {
+    demoUserId: demoId,
+    users: { demo: DEMO_USER.email, leaderboard: LEADERBOARD_CAST.length },
+    claims: { inserted: insertedClaims, total: claimIds.length },
+    guesses: guesses.length,
+    badges: { defs: BADGES.length, earned: earnedInserted },
+    weeklyReport: { weekStarting: weekStart, inserted: reportInserted },
+    scamForecast: { date: today, inserted: forecastInserted, items: 3 },
+  };
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('✗ Seed failed:', err);
-    process.exit(1);
-  });
+// Direct-invocation entry: only runs when this file is the entrypoint
+// (`tsx src/db/seed.ts`). When imported by scripts/seed-prod.ts, the import
+// side-effect is the export being defined, not main() running.
+const isDirectInvocation =
+  import.meta.url === `file://${process.argv[1]}` ||
+  import.meta.url.endsWith(process.argv[1] ?? '');
+
+if (isDirectInvocation) {
+  runSeed()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('✗ Seed failed:', err);
+      process.exit(1);
+    });
+}
