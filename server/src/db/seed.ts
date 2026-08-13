@@ -210,7 +210,7 @@ export interface SeedSummary {
   guesses: number;
   badges: { defs: number; earned: number };
   weeklyReport: { weekStarting: string; inserted: boolean };
-  scamForecast: { date: string; inserted: boolean; items: number };
+  scamForecast: { dates: string[]; inserted: boolean; items: number };
 }
 
 export interface SeedOptions {
@@ -356,62 +356,141 @@ export async function runSeed(opts: SeedOptions = {}): Promise<SeedSummary> {
     log(`weekly report for week of ${weekStart} (already exists)`);
   }
 
-  // 6. Scam forecast (today) ───────────────────────────────────────────────
-  const today = new Date().toISOString().slice(0, 10);
-  const [existingForecast] = await db
-    .select({ id: schema.scamForecasts.id })
-    .from(schema.scamForecasts)
-    .where(eq(schema.scamForecasts.forecastDate, today))
-    .limit(1);
+  // 6. Scam forecast (today + 2 prior days) ───────────────────────────────
+  // The demo account opens /forecast and sees today's items + a day-picker for
+  // history. Each day's items differ so the page doesn't look copy-pasted.
+  const today = new Date();
+  const isoDay = (offsetDays: number) => {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() - offsetDays);
+    return d.toISOString().slice(0, 10);
+  };
 
-  let forecastId: string;
+  const FORECAST_SEED: Array<{
+    offset: number;
+    // forecastId is filled in at insert time; the items themselves don't carry it.
+    items: Array<Omit<typeof schema.scamForecastItems.$inferInsert, 'forecastId'>>;
+  }> = [
+    {
+      offset: 0,
+      items: [
+        {
+          severity: 'high',
+          category: 'finance',
+          title: 'Deepfake CEO video-calls targeting finance teams',
+          description:
+            'Synthesia-style video calls impersonating CFOs are requesting urgent wire transfers. Verify any payment instruction via a second channel.',
+          recommendedAction:
+            'Always confirm large transfers via a known phone number — never the chat that issued the request.',
+        },
+        {
+          severity: 'medium',
+          category: 'health',
+          title: 'Viral "miracle cure" detoxes trending on TikTok',
+          description:
+            'Several week-old videos touting juice cleanses as cancer / diabetes cures are regaining traction after a creator repost.',
+          recommendedAction:
+            'Reverse-image-search any "study" screenshot. Real clinical trials appear on ClinicalTrials.gov.',
+        },
+        {
+          severity: 'low',
+          category: 'tech',
+          title: 'Phishing push notifications from fake package-delivery apps',
+          description:
+            'Copycat apps impersonating DHL / FedEx are sending push notifications with tracking links that steal session cookies.',
+          recommendedAction:
+            'Only install delivery apps linked from the carrier’s official site.',
+        },
+      ],
+    },
+    {
+      offset: 1,
+      items: [
+        {
+          severity: 'high',
+          category: 'misattributed_quote',
+          title: 'Fabricated celebrity endorsement of a crypto token',
+          description:
+            'AI-cloned audio of a public figure is being used in short-form ads promising a 10x return within 48 hours of "launch".',
+          recommendedAction:
+            'Verify any endorsement on the celebrity’s verified channel before acting on it.',
+        },
+        {
+          severity: 'medium',
+          category: 'conspiracy_theory',
+          title: 'False "bank outage" rumours driving phishing surges',
+          description:
+            'Posts claiming major banks are "down for maintenance" are circulating to funnel users to lookalike login pages.',
+          recommendedAction:
+            'Type your bank’s URL directly. Never log in from a link in a DM or social post.',
+        },
+        {
+          severity: 'low',
+          category: 'survey_stat',
+          title: 'Misleading "90% of users" stat in a VPN ad',
+          description:
+            'A sponsored post cites a 90% satisfaction figure from a study that has no methodology disclosure.',
+          recommendedAction:
+            'Search the study title. If you can’t find it, treat the stat as marketing copy.',
+        },
+      ],
+    },
+    {
+      offset: 2,
+      items: [
+        {
+          severity: 'medium',
+          category: 'misleading_omission',
+          title: 'Old interview clip re-cut to push a policy claim',
+          description:
+            'A 2019 interview is being re-circulated with newer captions to imply the speaker changed positions this week.',
+          recommendedAction:
+            'Check the original upload date. Out-of-context clips are the most recycled tactic of the year.',
+        },
+        {
+          severity: 'low',
+          category: 'factual_statement',
+          title: 'Viral "new phone hack" tip that bricks your device',
+          description:
+            'A tip claiming a hidden iOS shortcut can speed up charging is actually a sequence that disables key battery protections.',
+          recommendedAction:
+            'If a tip asks you to change system settings from an unknown source, don’t.',
+        },
+      ],
+    },
+  ];
+
   let forecastInserted = false;
-  if (existingForecast) {
-    forecastId = existingForecast.id;
-    log(`scam forecast for ${today} (already exists)`);
-  } else {
+  let totalItems = 0;
+  for (const day of FORECAST_SEED) {
+    const dateStr = isoDay(day.offset);
+    const [existing] = await db
+      .select({ id: schema.scamForecasts.id })
+      .from(schema.scamForecasts)
+      .where(eq(schema.scamForecasts.forecastDate, dateStr))
+      .limit(1);
+
+    if (existing) {
+      log(`scam forecast for ${dateStr} (already exists)`);
+      continue;
+    }
     if (dryRun) {
-      forecastId = '(dry-run)';
-    } else {
-      const [created] = await db
-        .insert(schema.scamForecasts)
-        .values({ forecastDate: today })
-        .returning({ id: schema.scamForecasts.id });
-      forecastId = created.id;
       forecastInserted = true;
+      totalItems += day.items.length;
+      continue;
     }
-    const items: Array<typeof schema.scamForecastItems.$inferInsert> = [
-      {
-        severity: 'high',
-        category: 'finance',
-        title: 'Deepfake CEO video-calls targeting finance teams',
-        description:
-          'Synthesia-style video calls impersonating CFOs are requesting urgent wire transfers. Verify any payment instruction via a second channel.',
-        recommendedAction: 'Always confirm large transfers via a known phone number — never the chat that issued the request.',
-      },
-      {
-        severity: 'medium',
-        category: 'health',
-        title: 'Viral "miracle cure" detoxes trending on TikTok',
-        description:
-          'Several week-old videos touting juice cleanses as cancer / diabetes cures are regaining traction after a creator repost.',
-        recommendedAction: 'Reverse-image-search any "study" screenshot. Real clinical trials appear on ClinicalTrials.gov.',
-      },
-      {
-        severity: 'low',
-        category: 'tech',
-        title: 'Phishing push notifications from fake package-delivery apps',
-        description:
-          'Copycat apps impersonating DHL / FedEx are sending push notifications with tracking links that steal session cookies.',
-        recommendedAction: 'Only install delivery apps linked from the carrier’s official site.',
-      },
-    ];
-    for (const it of items) {
-      if (dryRun) continue;
-      await db.insert(schema.scamForecastItems).values({ ...it, forecastId });
+    const [created] = await db
+      .insert(schema.scamForecasts)
+      .values({ forecastDate: dateStr, generationStatus: 'success' })
+      .returning({ id: schema.scamForecasts.id });
+    for (const it of day.items) {
+      await db.insert(schema.scamForecastItems).values({ ...it, forecastId: created.id });
     }
-    log(`scam forecast for ${today} (3 items)${dryRun ? ' [dry-run]' : ''}`);
+    forecastInserted = true;
+    totalItems += day.items.length;
+    log(`scam forecast for ${dateStr} (${day.items.length} items)`);
   }
+  if (totalItems > 0) log(`+${totalItems} forecast items across ${FORECAST_SEED.length} days`);
 
   log('');
   log('✓ Demo seed complete.');
@@ -424,7 +503,11 @@ export async function runSeed(opts: SeedOptions = {}): Promise<SeedSummary> {
     guesses: guesses.length,
     badges: { defs: BADGES.length, earned: earnedInserted },
     weeklyReport: { weekStarting: weekStart, inserted: reportInserted },
-    scamForecast: { date: today, inserted: forecastInserted, items: 3 },
+    scamForecast: {
+      dates: FORECAST_SEED.map((d) => isoDay(d.offset)),
+      inserted: forecastInserted,
+      items: totalItems,
+    },
   };
 }
 

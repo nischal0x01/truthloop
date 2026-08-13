@@ -7,6 +7,7 @@ import authRouter from './auth';
 import usersRouter from './users';
 import uploadRouter from './upload';
 import reportsRouter from './reports';
+import forecastRouter from './forecast';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/auth', authRouter);
 router.use('/users', usersRouter);
 router.use('/upload', uploadRouter);
 router.use('/reports', reportsRouter);
+router.use('/forecast', forecastRouter);
 
 export default router;

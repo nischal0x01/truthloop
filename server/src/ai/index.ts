@@ -67,3 +67,4 @@ export {
   buildPrescriptionPrompt,
   normalizePrescription,
 } from './prompts/prescription';
+export { buildScamForecastPrompt } from './prompts/scam-forecast';
