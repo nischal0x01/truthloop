@@ -27,7 +27,12 @@
       "Bash(echo \"started pid=$!\")",
       "Bash(curl -s -o /dev/null -w \"5173 status: %{http_code}\\\\n\" http://localhost:5173/discussions)",
       "Bash(curl -s -o /dev/null -w \"5174 status: %{http_code}\\\\n\" http://localhost:5174/discussions)",
-      "Bash(curl -s http://localhost:5173/src/pages/Discussions.tsx)"
+      "Bash(curl -s http://localhost:5173/src/pages/Discussions.tsx)",
+      "Bash(curl -s -o /dev/null -w \"5173 status: %{http_code}\\\\n\" http://localhost:5173/reports/weekly)",
+      "Bash(curl -s -o /dev/null -w \"5174 status: %{http_code}\\\\n\" http://localhost:5174/reports/weekly)",
+      "Bash(curl -s 'http://localhost:5173/src/App.tsx')",
+      "Bash(node -e \"console.log\\(require\\('recharts/package.json'\\).version\\)\")",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/reports/weekly)"
     ]
   }
 }
