@@ -313,6 +313,15 @@ CREATE TABLE IF NOT EXISTS weekly_reports (
 CREATE INDEX IF NOT EXISTS idx_weekly_reports_user
   ON weekly_reports(user_id, week_starting DESC);
 
+-- Per-period AI coach notes. Stored as JSONB so we can extend with new
+-- fields (e.g. a /forecast note, a profile-level note) without further
+-- migrations. Shape mirrors `WeeklyReportCoachNotes` in
+-- `app/src/actions/reports.ts`:
+--   { trend?: string, blindSpot?: string, replay?: string, prescription?: string }
+-- Idempotent — safe on re-run against an existing DB.
+ALTER TABLE weekly_reports
+  ADD COLUMN IF NOT EXISTS coach_notes JSONB;
+
 -- ════════════════════════════════════════════════════════════════════════
 -- discussions  (standalone forum posts, separate from claim comments)
 -- ════════════════════════════════════════════════════════════════════════

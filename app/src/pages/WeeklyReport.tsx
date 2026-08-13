@@ -40,10 +40,12 @@ import {
   TrendArea,
 } from '@/components/reports/ReportCharts';
 import { RangePicker } from '@/components/reports/RangePicker';
+import { CoachNote } from '@/components/reports/CoachNote';
 import { rangeFromParams } from '@/actions/reports';
 import {
   categoryLabel,
   getWeeklyRangeQuery,
+  pickCoachNote,
   rangeHeadline,
   rangeSubhead,
   rangeTitle,
@@ -184,6 +186,14 @@ export function WeeklyReport() {
                 report={report}
                 onViewClaim={(id) => navigate(`/claims/${id}`)}
               />
+              {/* Closing "Coach's prescription" — the one actionable moment of
+                  the report. Hidden when there's no AI note for it (e.g. no
+                  regenerated week data, or non-week range). */}
+              {pickCoachNote(report, 'prescription') && (
+                <CoachNote size="card">
+                  {pickCoachNote(report, 'prescription')}
+                </CoachNote>
+              )}
               {showRegen && (
                 <FooterActions
                   isRegenerating={regenMutation.isPending}
@@ -569,6 +579,12 @@ function BlindSpotSection({ report }: { report: WeeklyReportData }) {
             tone="dark"
           />
 
+          <div className="mt-4">
+            <CoachNote size="inline" tone="dark">
+              {pickCoachNote(report, 'blindSpot')}
+            </CoachNote>
+          </div>
+
           {/* Category chip */}
           <motion.div
             initial={reduce ? false : { opacity: 0, y: 8, scale: 0.96 }}
@@ -663,7 +679,10 @@ function TrendSection({
         title="The shape of your period."
         id="trend-heading"
       />
-      <TrendArea trend={report.trend} />
+      <div className="space-y-3">
+        <CoachNote size="inline">{pickCoachNote(report, 'trend')}</CoachNote>
+        <TrendArea trend={report.trend} />
+      </div>
 
       <p
         className="text-label-small text-foreground/60"
@@ -736,6 +755,7 @@ function ReplaySection({
         title="The claim worth a second look."
         id="replay-heading"
       />
+      <CoachNote size="inline">{pickCoachNote(report, 'replay')}</CoachNote>
 
       {replay ? (
         <motion.div

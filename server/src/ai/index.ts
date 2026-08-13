@@ -27,6 +27,15 @@ export {
   // blind-spot narrative
   blindSpotNarrativeSchema,
   blindSpotNarrativeFallback,
+  // weekly coach notes (§4.1–4.4)
+  trendCoachNoteSchema,
+  trendCoachNoteFallback,
+  blindSpotContextSchema,
+  blindSpotContextFallback,
+  replayCoachNoteSchema,
+  replayCoachNoteFallback,
+  prescriptionSchema,
+  prescriptionFallback,
   // live fact-check
   factCheckSchema,
 } from './schemas';
@@ -35,5 +44,26 @@ export type {
   ForecastItem,
   ForecastList,
   ToxicityVerdict,
+  TrendCoachNote,
+  BlindSpotContext,
+  ReplayCoachNote,
+  Prescription,
   FactCheck,
 } from './schemas';
+
+export {
+  buildTrendCoachNotePrompt,
+  normalizeTrendCoachNote,
+} from './prompts/trend-coach-note';
+export {
+  buildBlindSpotContextPrompt,
+  normalizeBlindSpotContext,
+} from './prompts/blind-spot-context';
+export {
+  buildReplayCoachNotePrompt,
+  normalizeReplayCoachNote,
+} from './prompts/replay-coach-note';
+export {
+  buildPrescriptionPrompt,
+  normalizePrescription,
+} from './prompts/prescription';

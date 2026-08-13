@@ -21,11 +21,38 @@ import { AppError } from '@/middleware/errorHandler';
 import {
   blindSpotNarrativeFallback,
   generateText,
+  generateStructured,
+  trendCoachNoteSchema,
+  trendCoachNoteFallback,
+  blindSpotContextSchema,
+  blindSpotContextFallback,
+  replayCoachNoteSchema,
+  replayCoachNoteFallback,
+  prescriptionSchema,
+  prescriptionFallback,
 } from '@/ai';
+import type { TrendCoachNote, BlindSpotContext, ReplayCoachNote, Prescription } from '@/ai';
 import {
   buildBlindSpotNarrativePrompt,
   normalizeBlindSpotNarrative,
 } from '@/ai/prompts/blind-spot-narrative';
+import {
+  buildTrendCoachNotePrompt,
+  normalizeTrendCoachNote,
+} from '@/ai/prompts/trend-coach-note';
+import {
+  buildBlindSpotContextPrompt,
+  normalizeBlindSpotContext,
+} from '@/ai/prompts/blind-spot-context';
+import {
+  buildReplayCoachNotePrompt,
+  normalizeReplayCoachNote,
+} from '@/ai/prompts/replay-coach-note';
+import {
+  buildPrescriptionPrompt,
+  normalizePrescription,
+} from '@/ai/prompts/prescription';
+import type { WeeklyCoachNotes } from '@/db/schema/reports';
 import { categoryLabel } from '@/lib/category-label';
 
 const router = Router();
@@ -418,6 +445,17 @@ interface WeeklyReportPayload {
   replayClaim: ReplayClaim | null;
   categoryBreakdown: { category: string; total: number; correct: number; accuracy: number }[];
   trend: { day: string; total: number; correct: number; accuracy: number; bucket: BucketKind }[];
+  /** Per-section inline coach notes + closing prescription. `null` for
+   *  non-week ranges (v1: regenerate is week-only anyway). */
+  coachNotes: WeeklyCoachNotes | null;
+}
+
+/** `Promise.allSettled` helper: pick the fulfilled value or substitute `fallback`.
+ *  Each coach-note generator already returns its own fallback via
+ *  `generateStructured`, so this never has to substitute anything in practice —
+ *  it's here as a belt-and-braces safety net. */
+function pickOk<T>(r: PromiseSettledResult<T>, fallback: T): T {
+  return r.status === 'fulfilled' ? r.value : fallback;
 }
 
 function toIsoDate(d: Date): string {
@@ -474,6 +512,7 @@ router.get('/weekly', requireAuth, async (req, res) => {
           accuracy: r.total > 0 ? r.correct / r.total : 0,
         })),
         trend: bucketizeTrend(trendRows, range),
+        coachNotes: cached.coachNotes ?? null,
       };
 
       res.json({
@@ -519,6 +558,9 @@ router.get('/weekly', requireAuth, async (req, res) => {
       accuracy: r.total > 0 ? r.correct / r.total : 0,
     })),
     trend: bucketizeTrend(trendRows, range),
+    // Non-week ranges don't get cached coach notes (regenerate is week-only).
+    // v1: leave as null; future ticket can compute live.
+    coachNotes: null,
   };
 
   res.json({
@@ -558,6 +600,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
   from.setUTCHours(0, 0, 0, 0);
   const fromIso = from.toISOString();
   const toIso = now.toISOString();
+  const periodLabel = 'the last 7 days';
 
   const breakdown = await categoryBreakdownFor(userId, fromIso, toIso);
   const totals = await userTotalsFor(userId, fromIso, toIso);
@@ -572,51 +615,156 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
   }));
   const blindSpotCategory = blindSpotFromBreakdown(breakdownWithAccuracy);
   const replayClaimId = await firstWrongClaimFor(userId, fromIso, toIso);
+  const replay = await loadReplay(replayClaimId);
+  const trendRows = await trendRowsFor(userId, fromIso, toIso, 'day');
   const globalAverageAccuracy = await globalAverageFor(fromIso, toIso);
 
-  // Generate the supportive one-line narrative via Claude (Tier 1 #2).
-  // Falls back to a generic string if the AI is misconfigured or returns junk.
-  let narrative: string | null = null;
-  if (blindSpotCategory) {
-    const blindSpotRow = breakdownWithAccuracy.find(
-      (r) => r.category === blindSpotCategory
-    );
-    if (blindSpotRow) {
-      const inputs = {
-        categoryLabel: categoryLabel(blindSpotCategory),
-        userMissRate: 1 - blindSpotRow.accuracy,
-        globalMissRate:
-          globalAverageAccuracy !== null ? 1 - globalAverageAccuracy : 0.5,
-        voteCount: blindSpotRow.total,
-        periodLabel: 'the last 7 days',
-      };
-      const built = buildBlindSpotNarrativePrompt(inputs);
-      try {
-        const rawText = await generateText({
-          ...built,
-          // MiniMax-M2 spends the budget on its internal `thinking` block
-          // (extended-thinking style), which can eat a full 256-token cap
-          // and leave no room for the actual text answer — `stop_reason`
-          // comes back as `max_tokens` with zero text blocks. 1024 gives
-          // the model room to think and still emit the narrative.
-          maxTokens: 1024,
-        });
-        const normalized = normalizeBlindSpotNarrative(rawText);
-        narrative = normalized.narrative;
-        // Light validation: must mention "you" and ≥ 12 chars.
-        if (
-          !narrative ||
-          narrative.length < 12 ||
-          !/\byou\b/i.test(narrative)
-        ) {
-          narrative = blindSpotNarrativeFallback.narrative;
-        }
-      } catch (err) {
+  // ── Generate the narrative + four Coach Notes in parallel.
+  // Each note has its own typed Zod schema + fallback constant, so a single
+  // bad call never blocks the rest. `Promise.allSettled` lets us collect
+  // every result (or its reason) without short-circuiting.
+  const blindSpotRow = blindSpotCategory
+    ? breakdownWithAccuracy.find((r) => r.category === blindSpotCategory)
+    : undefined;
+
+  // Per the conversation re MiniMax-M2's extended-thinking block, every
+  // text call is budgeted at 1024 tokens so the model has room to think
+  // AND emit its answer (otherwise it hits stop_reason=max_tokens with
+  // zero text blocks). `generateStructured` returns the fallback on parse
+  // failures, so 1024 caps never throw — they just risk truncated output.
+  const narrativePromise = blindSpotRow
+    ? generateText({
+        ...buildBlindSpotNarrativePrompt({
+          categoryLabel: categoryLabel(blindSpotCategory!),
+          userMissRate: 1 - blindSpotRow.accuracy,
+          globalMissRate:
+            globalAverageAccuracy !== null ? 1 - globalAverageAccuracy : 0.5,
+          voteCount: blindSpotRow.total,
+          periodLabel,
+        }),
+        maxTokens: 1024,
+      }).catch((err: unknown) => {
         console.warn('[reports] narrative generation failed, using fallback.', err);
-        narrative = blindSpotNarrativeFallback.narrative;
-      }
-    }
+        return blindSpotNarrativeFallback.narrative;
+      })
+    : Promise.resolve<string | null>(null);
+
+  const trendNotePromise = generateStructured<TrendCoachNote>({
+    ...buildTrendCoachNotePrompt({
+      userAccuracy,
+      globalAverageAccuracy,
+      trendPoints: trendRows.map((p) => ({
+        day: p.day,
+        total: p.total,
+        correct: p.correct,
+        accuracy: p.total > 0 ? p.correct / p.total : 0,
+      })),
+      periodLabel,
+    }),
+    schema: trendCoachNoteSchema,
+    fallback: trendCoachNoteFallback,
+    maxTokens: 1024,
+  });
+
+  const blindSpotNotePromise = blindSpotRow
+    ? generateStructured<BlindSpotContext>({
+        ...buildBlindSpotContextPrompt({
+          categoryLabel: categoryLabel(blindSpotCategory!),
+          userMissRate: 1 - blindSpotRow.accuracy,
+          globalMissRate:
+            globalAverageAccuracy !== null ? 1 - globalAverageAccuracy : 0.5,
+          voteCount: blindSpotRow.total,
+          periodLabel,
+        }),
+        schema: blindSpotContextSchema,
+        fallback: blindSpotContextFallback,
+        maxTokens: 1024,
+      })
+    : Promise.resolve(blindSpotContextFallback);
+
+  const replayNotePromise = replay
+    ? generateStructured<ReplayCoachNote>({
+        ...buildReplayCoachNotePrompt({
+          claimText: replay.text,
+          categoryLabel: categoryLabel(replay.category),
+          verdict: replay.verdict,
+          explanation: replay.explanation,
+          periodLabel,
+        }),
+        schema: replayCoachNoteSchema,
+        fallback: replayCoachNoteFallback,
+        maxTokens: 1024,
+      })
+    : Promise.resolve(replayCoachNoteFallback);
+
+  // Prescription sees the most context — it has to wait for the breakdown,
+  // but doesn't need to wait for the other AI calls. We pass stable inputs
+  // straight from the SQL helpers + the freshly-computed narrative (which
+  // we resolve via Promise.allSettled below if we want to chain it; for v1
+  // we let the prescription fire on the deterministic inputs so its
+  // prompt budget is independent of the narrative latency).
+  const prescriptionPromise = generateStructured<Prescription>({
+    ...buildPrescriptionPrompt({
+      blindSpotCategoryLabel: blindSpotCategory ? categoryLabel(blindSpotCategory) : null,
+      blindSpotNarrative: null, // chain not needed in v1
+      categoryBreakdown: breakdownWithAccuracy,
+      periodLabel,
+    }),
+    schema: prescriptionSchema,
+    fallback: prescriptionFallback,
+    maxTokens: 1024,
+  });
+
+  const [
+    narrativeRaw,
+    trendResult,
+    blindSpotNoteResult,
+    replayNoteResult,
+    prescriptionResult,
+  ] = await Promise.allSettled([
+    narrativePromise,
+    trendNotePromise,
+    blindSpotNotePromise,
+    replayNotePromise,
+    prescriptionPromise,
+  ]);
+
+  // ── Resolve narrative with light validation (must mention "you" / ≥ 12 chars).
+  let narrative: string | null = null;
+  if (narrativeRaw.status === 'fulfilled' && narrativeRaw.value) {
+    const normalized = normalizeBlindSpotNarrative(narrativeRaw.value);
+    const candidate = normalized.narrative;
+    narrative =
+      candidate && candidate.length >= 12 && /\byou\b/i.test(candidate)
+        ? candidate
+        : blindSpotNarrativeFallback.narrative;
   }
+
+  // ── Resolve coach notes from structured results. Each generator returns
+  // its own fallback on parse failure, so we just unwrap the PromiseSettled.
+  const trendNote: TrendCoachNote = pickOk(trendResult, trendCoachNoteFallback);
+  const blindSpotNote: BlindSpotContext = pickOk(
+    blindSpotNoteResult,
+    blindSpotContextFallback
+  );
+  const replayNote: ReplayCoachNote = pickOk(replayNoteResult, replayCoachNoteFallback);
+  const prescription: Prescription = pickOk(prescriptionResult, prescriptionFallback);
+
+  // Light validation: must mention "you" and ≥ 12 chars (matches the narrative rule).
+  // If a note is too short or doesn't address the user, swap in the fallback silently.
+  const looksRight = (note: string) =>
+    note.length >= 12 && /\byou\b/i.test(note);
+
+  const coachNotes: WeeklyCoachNotes = {
+    trend: looksRight(trendNote.note) ? trendNote.note : trendCoachNoteFallback.note,
+    blindSpot: looksRight(blindSpotNote.note)
+      ? blindSpotNote.note
+      : blindSpotContextFallback.note,
+    replay: looksRight(replayNote.note) ? replayNote.note : replayCoachNoteFallback.note,
+    prescription: looksRight(prescription.note)
+      ? prescription.note
+      : prescriptionFallback.note,
+  };
 
   const existing = await db
     .select({ id: schema.weeklyReports.id })
@@ -640,6 +788,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
         replayClaimId,
         globalAverageAccuracy,
         userAccuracy,
+        coachNotes,
       })
       .where(eq(schema.weeklyReports.id, existing[0].id));
   } else {
@@ -653,6 +802,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
       replayClaimId,
       globalAverageAccuracy,
       userAccuracy,
+      coachNotes,
     });
   }
 
@@ -663,6 +813,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
     totalGuesses,
     correctGuesses,
     blindSpotCategory,
+    coachNotes,
   });
 });
 

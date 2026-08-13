@@ -108,6 +108,66 @@ export const blindSpotNarrativeFallback = {
   toneSelfCheck: true,
 };
 
+/* ── 4.1–4.4 Weekly coach notes (per-section inline + closing prescription) ──
+ *
+ * Four short, supportive one-liners rendered across the Weekly Blind-Spot
+ * report:
+ *   - `trendCoachNote`            → under the Trend section h2
+ *   - `blindSpotContext`          → under the Blind-spot section h2
+ *                                    (the existing `blindSpotNarrative` blockquote
+ *                                     above stays as the headline statement)
+ *   - `replayCoachNote`           → under the Replay section h2
+ *   - `prescription`              → closing card above FooterActions
+ *
+ * Each is generated in parallel inside `/weekly/regenerate` via
+ * `generateStructured({ schema, fallback })` so an AI outage on one never
+ * blocks the others. Fallbacks are pre-written supportive strings.
+ */
+
+/** Trend observation — looks at peaks/dips/routine in the user's daily accuracy. */
+export const trendCoachNoteSchema = z.object({
+  note: z.string().min(20).max(180),
+});
+export type TrendCoachNote = z.infer<typeof trendCoachNoteSchema>;
+
+export const trendCoachNoteFallback: TrendCoachNote = {
+  note:
+    'Steady week — your accuracy held within a tight band. Tap the trend bars below to compare the daily counts.',
+};
+
+/** Blind-spot context — explains what makes the user's worst category structurally tricky. */
+export const blindSpotContextSchema = z.object({
+  note: z.string().min(20).max(180),
+});
+export type BlindSpotContext = z.infer<typeof blindSpotContextSchema>;
+
+export const blindSpotContextFallback: BlindSpotContext = {
+  note:
+    'This category tends to fool people who read fast. Slowing down on the headline alone is half the win.',
+};
+
+/** Replay insight — points out the structural tell behind the replay claim. */
+export const replayCoachNoteSchema = z.object({
+  note: z.string().min(20).max(200),
+});
+export type ReplayCoachNote = z.infer<typeof replayCoachNoteSchema>;
+
+export const replayCoachNoteFallback: ReplayCoachNote = {
+  note:
+    'Look at how the source is cited — missing or circular sourcing is the most common tell for claims like this.',
+};
+
+/** Closing prescription — one concrete next-week micro-habit. */
+export const prescriptionSchema = z.object({
+  note: z.string().min(20).max(220),
+});
+export type Prescription = z.infer<typeof prescriptionSchema>;
+
+export const prescriptionFallback: Prescription = {
+  note:
+    "Pick one category this week and read two articles about how it gets made. Pattern recognition scales faster than rules.",
+};
+
 /* ── 5. Live fact-check (`.ai/05-ai-prompts.md` §5) ────────────────── */
 
 export const factCheckSchema = z.object({

@@ -13,10 +13,23 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
 import { claims } from './claims';
+
+/**
+ * Shape of the `coach_notes` JSONB column on `weekly_reports`.
+ * Mirrors `WeeklyReportCoachNotes` in `app/src/actions/reports.ts` so the
+ * server can persist & read it without importing from the client workspace.
+ */
+export interface WeeklyCoachNotes {
+  trend?: string | null;
+  blindSpot?: string | null;
+  replay?: string | null;
+  prescription?: string | null;
+}
 
 export const weeklyReports = pgTable(
   'weekly_reports',
@@ -36,6 +49,7 @@ export const weeklyReports = pgTable(
     globalAverageAccuracy: real('global_average_accuracy'),
     userAccuracy: real('user_accuracy'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    coachNotes: jsonb('coach_notes').$type<WeeklyCoachNotes | null>(),
   },
   (t) => [
     uniqueIndex('weekly_reports_user_week_unique').on(t.userId, t.weekStarting),

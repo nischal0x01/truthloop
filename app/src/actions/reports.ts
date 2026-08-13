@@ -92,6 +92,24 @@ export interface WeeklyReportTrendPoint {
   bucket: 'day' | 'week';
 }
 
+/**
+ * Per-section inline coach notes + closing prescription rendered across
+ * the Weekly Blind-Spot report. Each field is a short AI-generated
+ * one-liner (or the typed fallback). `null` = no note surfaced for that
+ * slot (e.g. user has no blind spot, no replay claim, or `coachNotes` is
+ * absent from the cached row).
+ *
+ * Mirrors `WeeklyCoachNotes` in `server/src/db/schema/reports.ts`.
+ */
+export type CoachNoteKind = 'trend' | 'blindSpot' | 'replay' | 'prescription';
+
+export interface WeeklyReportCoachNotes {
+  trend: string | null;
+  blindSpot: string | null;
+  replay: string | null;
+  prescription: string | null;
+}
+
 export interface WeeklyReport {
   weekStarting: string;
   totalGuesses: number;
@@ -104,6 +122,23 @@ export interface WeeklyReport {
   replayClaim: WeeklyReportReplay | null;
   categoryBreakdown: WeeklyReportCategoryStat[];
   trend: WeeklyReportTrendPoint[];
+  /** Per-section inline notes + closing prescription. `null` for non-week
+   *  ranges in v1 (regenerate is week-only). */
+  coachNotes: WeeklyReportCoachNotes | null;
+}
+
+/** Selector helper — pulls a single note out of `report.coachNotes`,
+ *  returning `null` if the report has no notes (non-week, post-empty-
+ *  state, before-regenerate) or if the specific slot is empty. */
+export function pickCoachNote(
+  report: WeeklyReport | null | undefined,
+  kind: CoachNoteKind
+): string | null {
+  if (!report) return null;
+  const notes = report.coachNotes;
+  if (!notes) return null;
+  const value = notes[kind];
+  return value && value.trim() ? value : null;
 }
 
 export interface WeeklyReportResponse {
