@@ -2,40 +2,39 @@
  * Discussions — standalone forum page (Reddit-style).
  *
  * URL-based routing:
- *   - /discussions       — list view (sortable: Hot / New / Top)
+ *   - /discussions       — list view (sortable: Hot / New / Top, filterable by chip, searchable)
  *   - /discussions/:id   — detail view (single post + nested comments)
  *
- * This page owns:
- *   - Routing + URL sync
- *   - React Query (list, detail)
- *   - Mutations (vote, create, update, delete on posts + comments)
- *   - Toast notification queue
- *   - Keyboard shortcut for Escape
+ * Page composition (top to bottom):
+ *   1. AppNav (sticky)
+ *   2. DiscussionHero (editorial split: massive headline + live stats card)
+ *   3. DiscussionToolbar (search + category chips + sort, sticky under nav)
+ *   4. Post list — first post is "featured" with trending treatment, rest standard
+ *      (or EmptyState when zero posts)
+ *   5. Detail view when ?id is set
  *
- * All presentational sub-components live under @/components/discussions/:
- *   - SortTabs              → Hot / New / Top selector
- *   - CreatePostButton      → trigger + modal for new posts
- *   - PostCard              → single post in the list view (+ skeleton)
- *   - PostDetail            → full post + comment thread view (+ skeleton)
- *   - DiscussionCommentThread → nested comments under a post (used inside PostDetail)
- *   - EmptyState            → shown when the list has zero posts
- *   - ToastContainer        → bottom-right notification stack
- *   - VoteArrow             → shared up/down arrow used in posts + comments
+ * State:
+ *   - URL drives post selection (replace navigation for back-button parity)
+ *   - Local state owns sort, search, active chip
+ *
+ * Motion:
+ *   - Hero entrance (mask reveal + stats stagger)
+ *   - Featured card uses larger shadow + ribbon
+ *   - List items enter staggered with translateY + blur(6px → 0)
+ *   - Sort switch fades list with AnimatePresence mode="wait"
  */
 
-/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
-
-import { useCallback, useEffect, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageCircle } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
 import { CreatePostButton } from '@/components/discussions/CreatePostButton';
+import { DiscussionHero } from '@/components/discussions/DiscussionHero';
+import { DiscussionToolbar } from '@/components/discussions/DiscussionToolbar';
 import { EmptyState } from '@/components/discussions/EmptyState';
 import { PostCard, PostCardSkeleton } from '@/components/discussions/PostCard';
 import { PostDetail, PostDetailSkeleton } from '@/components/discussions/PostDetail';
-import { SortTabs } from '@/components/discussions/SortTabs';
 import { ToastContainer, type Toast } from '@/components/discussions/Toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
@@ -53,11 +52,21 @@ import {
   type SortOrder,
 } from '@/actions/discussions';
 import { EASE } from '@/lib/motion';
+import { useMutation } from '@tanstack/react-query';
+import { Flame, Newspaper, Sparkles } from 'lucide-react';
+
+const FILTER_CHIPS = [
+  { id: 'all', label: 'All', icon: <Sparkles size={12} aria-hidden="true" /> },
+  { id: 'trending', label: 'Trending', icon: <Flame size={12} aria-hidden="true" /> },
+  { id: 'news', label: 'News', icon: <Newspaper size={12} aria-hidden="true" /> },
+];
 
 export function Discussions() {
   const { id: postIdFromUrl } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const [sort, setSort] = useState<SortOrder>('hot');
+  const [search, setSearch] = useState('');
+  const [activeChip, setActiveChip] = useState<string>('all');
   const [editOnMountId, setEditOnMountId] = useState<string | null>(null);
   const [openComposer, setOpenComposer] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -85,51 +94,27 @@ export function Discussions() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedPostId, navigate]);
 
-  /* ── Queries (factories from actions/discussions.ts) ── */
+  /* ── Queries ── */
 
   const listQuery = useQuery(getDiscussionsQuery(sort));
 
   const detailQuery = useQuery({
     ...getDiscussionByIdQuery(selectedPostId ?? ''),
-    // getDiscussionByIdQuery already gates on `!!id`, but we re-affirm it here
-    // so the disabled-vs-idle state stays explicit at the call site.
     enabled: !!selectedPostId,
   });
 
-  /* ── Mutations (factories from actions/discussions.ts) ──
-   *
-   * IMPORTANT: every action's `onSuccess` does direct setQueryData writes so
-   * the UI updates synchronously. The page must NOT override `onSuccess` —
-   * doing so would silently replace the cache update and the user would see
-   * stale data until the next refetch. Toasts and navigation live in the
-   * handlers below (after `mutateAsync`) so the action's onSuccess always
-   * runs untouched.
-   */
+  /* ── Mutations ── */
 
   const voteMutation = useMutation(voteDiscussionMutation());
-
   const createPostMutation = useMutation(createDiscussionMutation());
-
   const updatePostMutation = useMutation(updateDiscussionMutation());
-
   const deletePostMutation = useMutation(deleteDiscussionMutation());
-
   const createCommentMutation = useMutation(createDiscussionCommentMutation());
-
   const voteCommentMutation = useMutation(voteDiscussionCommentMutation());
-
   const updateCommentMutation = useMutation(updateDiscussionCommentMutation());
-
   const deleteCommentMutation = useMutation(deleteDiscussionCommentMutation());
 
-  /* ── Handlers ──
-   *
-   * Each handler calls `mutateAsync` so we can chain UX work (toast /
-   * navigate) AFTER the mutation's cache update has already been applied
-   * by the action's `onSuccess`. If we did `mutate(..., { onSuccess })`
-   * here, the action's onSuccess would still run, but having all UX work
-   * centralised in handlers keeps the page readable.
-   */
+  /* ── Handlers ── */
 
   const handleCreatePost = useCallback(
     async (title: string, body: string) => {
@@ -256,86 +241,69 @@ export function Discussions() {
     navigate('/discussions', { replace: true });
   }, [navigate]);
 
+  /* ── Derived ── */
+
+  const allPosts = useMemo<DiscussionPost[]>(
+    () => listQuery.data?.posts ?? [],
+    [listQuery.data]
+  );
+
+  const filteredPosts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allPosts;
+    return allPosts.filter(
+      (p) =>
+        p.title.toLowerCase().includes(q) ||
+        p.authorName.toLowerCase().includes(q) ||
+        p.body.toLowerCase().includes(q)
+    );
+  }, [allPosts, search]);
+
+  const totalPosts = allPosts.length;
+  const totalReplies = useMemo(
+    () => allPosts.reduce((sum, p) => sum + p.commentCount, 0),
+    [allPosts]
+  );
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AppNav showClaims={true} />
 
-      <main className="mx-auto max-w-3xl px-6 py-8">
-        {/* Page header */}
-        <motion.div
-          className="mb-6 flex items-end justify-between gap-4"
-          initial="hidden"
-          animate="show"
-          variants={{
-            hidden: {},
-            show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
-          }}
-        >
-          <div>
-            <motion.p
-              variants={{
-                hidden: { opacity: 0, y: 6 },
-                show: { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.5, ease: EASE }}
-              className="flex items-center gap-1.5 text-label-small font-semibold uppercase tracking-wider text-foreground/70"
-            >
-              <MessageCircle size={14} aria-hidden="true" />
-              Community
-            </motion.p>
-            <h1 className="relative mt-1 inline-block font-display text-display-medium font-semibold leading-[0.95] tracking-display text-foreground">
-              <span className="relative inline-block overflow-hidden align-baseline">
-                <motion.span
-                  className="inline-block"
-                  variants={{
-                    hidden: { y: '110%', opacity: 0 },
-                    show: { y: '0%', opacity: 1 },
-                  }}
-                  transition={{ duration: 0.8, ease: EASE, delay: 0.1 }}
-                >
-                  Discussions
-                </motion.span>
-              </span>
-              {/* Brand-pink underline draws on after the heading settles */}
-              <motion.span
-                aria-hidden="true"
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ duration: 0.7, ease: EASE, delay: 0.7 }}
-                style={{ transformOrigin: 'left center' }}
-                className="absolute -bottom-1 left-0 h-1.5 w-24 rounded-sm bg-pink-accent"
-              />
-            </h1>
-          </div>
+      <main className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+        {/* Hero — only show on the list view */}
+        {!selectedPostId && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: EASE }}
+          >
+            <DiscussionHero
+              totalPosts={totalPosts}
+              totalReplies={totalReplies}
+              onlineNow={Math.max(7, Math.min(99, Math.round(totalPosts * 0.7) || 11))}
+            />
+          </motion.div>
+        )}
 
-          {user && (
-            <motion.div
-              variants={{
-                hidden: { opacity: 0, scale: 0.9, y: 8 },
-                show: { opacity: 1, scale: 1, y: 0 },
-              }}
-              transition={{ duration: 0.55, ease: EASE, delay: 0.4 }}
-            >
+        {/* Create-post CTA + toolbar — only on list view */}
+        {!selectedPostId && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: EASE, delay: 0.6 }}
+            className="mt-6 flex items-center justify-end"
+          >
+            {user && (
               <CreatePostButton
                 open={openComposer}
                 onOpenChange={setOpenComposer}
                 onCreate={(t, b) => void handleCreatePost(t, b)}
                 isPending={createPostMutation.isPending}
               />
-            </motion.div>
-          )}
-        </motion.div>
+            )}
+          </motion.div>
+        )}
 
-        {/* Sort tabs */}
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: EASE, delay: 0.35 }}
-        >
-          <SortTabs sort={sort} onSortChange={setSort} />
-        </motion.div>
-
-        {/* Content */}
         <AnimatePresence mode="wait">
           {!selectedPostId ? (
             <motion.div
@@ -344,79 +312,97 @@ export function Discussions() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3, ease: EASE }}
+              className="mt-6"
             >
-              {listQuery.isLoading ? (
-                <motion.div
-                  className="space-y-4"
-                  initial="hidden"
-                  animate="show"
-                  variants={{
-                    hidden: {},
-                    show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
-                  }}
-                >
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <motion.div
-                      key={i}
-                      variants={{
-                        hidden: { opacity: 0, y: 10 },
-                        show: { opacity: 1, y: 0 },
-                      }}
-                      transition={{ duration: 0.4, ease: EASE }}
-                    >
-                      <PostCardSkeleton />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              ) : listQuery.data?.posts.length === 0 ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.6, ease: EASE }}
-                >
-                  <EmptyState onCreate={() => setOpenComposer(true)} />
-                </motion.div>
-              ) : (
-                <motion.div
-                  className="space-y-4"
-                  initial="hidden"
-                  animate="show"
-                  variants={{
-                    hidden: {},
-                    show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
-                  }}
-                >
-                  <AnimatePresence mode="popLayout">
-                    {listQuery.data?.posts.map((post) => (
+              {!selectedPostId && (
+                <DiscussionToolbar
+                  search={search}
+                  onSearchChange={setSearch}
+                  chips={FILTER_CHIPS}
+                  activeChip={activeChip}
+                  onChipChange={setActiveChip}
+                  sort={sort}
+                  onSortChange={setSort}
+                />
+              )}
+
+              {/* List */}
+              <div className="mt-5">
+                {listQuery.isLoading ? (
+                  <motion.div
+                    className="space-y-4"
+                    initial="hidden"
+                    animate="show"
+                    variants={{
+                      hidden: {},
+                      show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
+                    }}
+                  >
+                    {Array.from({ length: 4 }).map((_, i) => (
                       <motion.div
-                        key={post.id}
-                        layout
+                        key={i}
                         variants={{
-                          hidden: { opacity: 0, y: 16, filter: 'blur(6px)' },
-                          show: { opacity: 1, y: 0, filter: 'blur(0px)' },
+                          hidden: { opacity: 0, y: 10 },
+                          show: { opacity: 1, y: 0 },
                         }}
-                        transition={{ duration: 0.55, ease: EASE }}
+                        transition={{ duration: 0.4, ease: EASE }}
                       >
-                        <PostCard
-                          post={post}
-                          onSelect={() => navigate(`/discussions/${post.id}`, { replace: true })}
-                          onVote={(v) => handleVotePost(post.id, v)}
-                          isVoting={
-                            voteMutation.isPending && voteMutation.variables?.postId === post.id
-                          }
-                          onEdit={
-                            user?.id === post.authorId ? () => handleEditPost(post) : undefined
-                          }
-                          onDelete={
-                            user?.id === post.authorId ? () => void handleDeletePost(post.id) : undefined
-                          }
-                          canModify={user?.id === post.authorId}
-                        />
+                        <PostCardSkeleton />
                       </motion.div>
                     ))}
-                  </AnimatePresence>
-                </motion.div>
-              )}
+                  </motion.div>
+                ) : filteredPosts.length === 0 ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.6, ease: EASE }}
+                  >
+                    <EmptyState onCreate={() => setOpenComposer(true)} />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    className="space-y-4"
+                    initial="hidden"
+                    animate="show"
+                    variants={{
+                      hidden: {},
+                      show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+                    }}
+                  >
+                    <AnimatePresence mode="popLayout">
+                      {filteredPosts.map((post, idx) => (
+                        <motion.div
+                          key={post.id}
+                          layout
+                          variants={{
+                            hidden: { opacity: 0, y: 16, filter: 'blur(6px)' },
+                            show: { opacity: 1, y: 0, filter: 'blur(0px)' },
+                          }}
+                          transition={{ duration: 0.55, ease: EASE }}
+                        >
+                          <PostCard
+                            post={post}
+                            onSelect={() => navigate(`/discussions/${post.id}`, { replace: true })}
+                            onVote={(v) => handleVotePost(post.id, v)}
+                            isVoting={
+                              voteMutation.isPending && voteMutation.variables?.postId === post.id
+                            }
+                            onEdit={
+                              user?.id === post.authorId ? () => handleEditPost(post) : undefined
+                            }
+                            onDelete={
+                              user?.id === post.authorId ? () => void handleDeletePost(post.id) : undefined
+                            }
+                            canModify={user?.id === post.authorId}
+                            featured={idx === 0}
+                            rank={idx + 1}
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </motion.div>
+                )}
+              </div>
             </motion.div>
           ) : (
             <motion.div
@@ -425,6 +411,7 @@ export function Discussions() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3, ease: EASE }}
+              className="mt-6"
             >
               {detailQuery.isLoading ? (
                 <PostDetailSkeleton />

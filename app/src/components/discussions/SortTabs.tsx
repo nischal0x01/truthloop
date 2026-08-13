@@ -1,17 +1,17 @@
 /**
  * SortTabs — Hot / New / Top selector for the discussions list.
  *
- * The active tab gets a pink "pill" that slides between options using
- * `layoutId`. The pill is a motion.span that animates between positions
- * via spring physics — no JS measurement, just the shared-element pattern.
- *
- * Visual: muted container (bg-muted/40) with rounded-lg + 2px black border,
- * each tab is a transparent button with a centred icon + label.
+ * Premium treatment:
+ *   - Outer pill: 2px black border, bg-muted/40, shadow-hard-sm
+ *   - Active tab gets a pink pill that slides between positions (layoutId)
+ *   - Spring-physics slide, label slightly darker when active
+ *   - Tab icons animate scale on hover
  */
 
 import { Award, Clock, TrendingUp } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { SortOrder } from '@/actions/discussions';
+import { EASE } from '@/lib/motion';
 
 const SORT_OPTIONS: { value: SortOrder; label: string; icon: React.ReactNode }[] = [
   { value: 'hot', label: 'Hot', icon: <TrendingUp size={13} aria-hidden="true" /> },
@@ -31,7 +31,7 @@ export function SortTabs({ sort, onSortChange }: SortTabsProps) {
     <div
       role="tablist"
       aria-label="Sort discussions"
-      className="relative mb-5 inline-flex items-center gap-1 rounded-lg border-2 border-black bg-muted/40 p-1 shadow-hard-sm"
+      className="relative inline-flex items-center gap-1 rounded-full border-2 border-black bg-muted/40 p-1 shadow-hard-sm"
     >
       {SORT_OPTIONS.map((opt) => {
         const isActive = sort === opt.value;
@@ -42,22 +42,29 @@ export function SortTabs({ sort, onSortChange }: SortTabsProps) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onSortChange(opt.value)}
-            className="relative z-10 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-label-small font-semibold transition-colors"
+            className="relative z-10 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-label-small font-semibold transition-colors duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
           >
             {isActive && (
               <motion.span
                 layoutId="sort-active-pill"
-                className="absolute inset-0 -z-10 rounded-md border-2 border-black bg-pink-accent shadow-hard-sm"
+                className="absolute inset-0 -z-10 rounded-full border-2 border-black bg-pink-accent shadow-hard-sm"
                 transition={reduce ? { duration: 0 } : { type: 'spring', damping: 22, stiffness: 320 }}
               />
             )}
             <span
               className={[
-                'relative z-10 inline-flex items-center gap-1.5',
+                'relative z-10 inline-flex items-center gap-1.5 transition-colors',
                 isActive ? 'text-black' : 'text-foreground/70',
               ].join(' ')}
             >
-              {opt.icon}
+              <motion.span
+                aria-hidden
+                whileHover={reduce ? undefined : { rotate: isActive ? 0 : -8, scale: 1.1 }}
+                transition={{ duration: 0.25, ease: EASE }}
+                className="inline-flex"
+              >
+                {opt.icon}
+              </motion.span>
               {opt.label}
             </span>
           </button>

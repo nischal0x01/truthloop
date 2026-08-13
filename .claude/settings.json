@@ -22,7 +22,12 @@
       "Bash(curl -sS -o /dev/null -w \"backend HTTP %{http_code}\\\\n\" https://truthloop-api.sajjan.dev/)",
       "Bash(curl -sS https://truthloop-api.sajjan.dev/)",
       "Bash(npx vite *)",
-      "Bash(git commit -m 'refactor\\(app\\): split data layer into actions/ factories + reusable fetcher *)"
+      "Bash(git commit -m 'refactor\\(app\\): split data layer into actions/ factories + reusable fetcher *)",
+      "Bash(npm run *)",
+      "Bash(echo \"started pid=$!\")",
+      "Bash(curl -s -o /dev/null -w \"5173 status: %{http_code}\\\\n\" http://localhost:5173/discussions)",
+      "Bash(curl -s -o /dev/null -w \"5174 status: %{http_code}\\\\n\" http://localhost:5174/discussions)",
+      "Bash(curl -s http://localhost:5173/src/pages/Discussions.tsx)"
     ]
   }
 }
