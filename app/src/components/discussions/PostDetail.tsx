@@ -32,7 +32,7 @@ import {
   type DiscussionComment,
   type DiscussionPost,
   type DiscussionVoteValue,
-} from '@/lib/discussions';
+} from '@/actions/discussions';
 import { EASE } from '@/lib/motion';
 import { DiscussionCommentThread } from './DiscussionCommentThread';
 import { VoteArrow } from './VoteArrow';

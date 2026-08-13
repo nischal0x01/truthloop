@@ -38,8 +38,7 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/auth/UserAvatar';
 import { AppNav } from '@/components/AppNav';
 import {
-  profileApi,
-  profileKeys,
+  getMyProfileQuery,
   memberSince,
   rarityMeta,
   timeAgo,
@@ -47,8 +46,8 @@ import {
   type ProfileBadge,
   type RecentVote,
   type WeeklyReportPreview,
-} from '@/lib/profile';
-import { CATEGORY_META, type ClaimCategory } from '@/lib/claims';
+} from '@/actions/profile';
+import { CATEGORY_META, type ClaimCategory } from '@/actions/claims';
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 
@@ -474,16 +473,8 @@ export function Profile() {
   }, [status, navigate]);
 
   const profileQuery = useQuery({
-    queryKey: profileKeys.me(),
-    queryFn: () => profileApi.me(),
+    ...getMyProfileQuery(),
     enabled: status === 'authenticated',
-    // Don't retry on 401 — the auth context already knows the user is signed
-    // out and is redirecting them away. Retrying just adds noise.
-    retry: (failureCount, error) => {
-      const status = (error as { status?: number } | null)?.status;
-      if (status === 401 || status === 403) return false;
-      return failureCount < 1;
-    },
   });
 
   if (!user) return null;

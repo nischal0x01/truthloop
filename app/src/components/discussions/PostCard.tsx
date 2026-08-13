@@ -22,7 +22,7 @@
 import { MessageCircle, Pencil, Trash2 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { UserAvatar } from '@/components/auth/UserAvatar';
-import { shortTimeAgo, type DiscussionPost } from '@/lib/discussions';
+import { shortTimeAgo, type DiscussionPost } from '@/actions/discussions';
 import { EASE } from '@/lib/motion';
 import { VoteArrow } from './VoteArrow';
 

@@ -25,18 +25,22 @@ import { CommentComposer } from './CommentComposer';
 import {
   buildTree,
   commentKeys,
-  commentsApi,
   countComments,
+  getCommentsQuery,
+  createCommentMutation,
+  updateCommentMutation,
+  deleteCommentMutation,
+  voteCommentMutation,
   type Comment,
   type CommentVoteValue,
-} from '@/lib/comments';
+} from '@/actions/comments';
 import {
   CATEGORY_META,
   timeAgo,
   type Claim,
   type ClaimVerdict,
   type UserGuess,
-} from '@/lib/claims';
+} from '@/actions/claims';
 
 interface ClaimDetailPanelProps {
   claim: Claim;
@@ -70,12 +74,11 @@ export function ClaimDetailPanel({
   const realPct = totalVotes > 0 ? Math.round((realCount / totalVotes) * 100) : 0;
   const fakePct = totalVotes > 0 ? Math.round((fakeCount / totalVotes) * 100) : 0;
 
-  /* ── Comments ── */
+  /* ── Comments (factory from actions/comments.ts) ── */
   // Not fetched until the user has voted — saves a request and enforces the
   // spoiler rule at the network layer, not just visually.
   const commentsQuery = useQuery({
-    queryKey: key,
-    queryFn: () => commentsApi.list(claim.id),
+    ...getCommentsQuery(claim.id),
     enabled: hasVoted,
   });
 
@@ -85,11 +88,10 @@ export function ClaimDetailPanel({
   );
   const total = useMemo(() => countComments(tree), [tree]);
 
-  /* ── Post a comment / reply ── */
+  /* ── Post a comment / reply (factory from actions/comments.ts) ── */
   const createMutation = useMutation({
-    mutationFn: (input: { parentCommentId?: string | null; body: string }) =>
-      commentsApi.create({ claimId: claim.id, ...input }),
-    onSuccess: ({ comment }) => {
+    ...createCommentMutation(claim.id),
+    onSuccess: (comment) => {
       // Append to cache directly — avoids a refetch and keeps the new comment
       // visible even though the server sorts by score (a fresh 0-score comment
       // would otherwise jump to the bottom on refetch).
@@ -101,10 +103,9 @@ export function ClaimDetailPanel({
     },
   });
 
-  /* ── Vote on a comment ── */
+  /* ── Vote on a comment (factory from actions/comments.ts) ── */
   const voteMutation = useMutation({
-    mutationFn: ({ commentId, vote }: { commentId: string; vote: CommentVoteValue }) =>
-      commentsApi.vote(commentId, vote),
+    ...voteCommentMutation(),
 
     onMutate: async ({ commentId, vote }) => {
       await qc.cancelQueries({ queryKey: key });
@@ -138,7 +139,7 @@ export function ClaimDetailPanel({
       if (ctx?.prev) qc.setQueryData(key, ctx.prev);
     },
 
-    onSuccess: ({ comment }) => {
+    onSuccess: (comment) => {
       // Reconcile with the server's recomputed tally.
       qc.setQueryData<{ comments: Comment[]; maxDepth: number }>(key, (cur) =>
         cur
@@ -160,11 +161,10 @@ export function ClaimDetailPanel({
     },
   });
 
-  /* ── Edit a comment ── */
+  /* ── Edit a comment (factory from actions/comments.ts) ── */
   const editMutation = useMutation({
-    mutationFn: ({ commentId, body }: { commentId: string; body: string }) =>
-      commentsApi.update(commentId, body),
-    onSuccess: ({ comment }) => {
+    ...updateCommentMutation(),
+    onSuccess: (comment) => {
       qc.setQueryData<{ comments: Comment[]; maxDepth: number }>(key, (cur) =>
         cur
           ? {
@@ -178,9 +178,9 @@ export function ClaimDetailPanel({
     },
   });
 
-  /* ── Delete a comment ── */
+  /* ── Delete a comment (factory from actions/comments.ts) ── */
   const deleteMutation = useMutation({
-    mutationFn: (commentId: string) => commentsApi.delete(commentId),
+    ...deleteCommentMutation(),
     onSuccess: (_result, commentId) => {
       qc.setQueryData<{ comments: Comment[]; maxDepth: number }>(key, (cur) =>
         cur

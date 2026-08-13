@@ -52,7 +52,7 @@ import {
   type ClaimVerdict,
   type UserGuessMap,
   type CategoryMeta,
-} from '@/lib/claims';
+} from '@/actions/claims';
 
 const FALLBACK_META: CategoryMeta = { label: 'Claim', icon: '📋', bg: 'bg-muted', ink: 'text-foreground' };
 

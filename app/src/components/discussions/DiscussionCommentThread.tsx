@@ -26,7 +26,7 @@ import {
   shortTimeAgo,
   type DiscussionCommentNode,
   type DiscussionVoteValue,
-} from '@/lib/discussions';
+} from '@/actions/discussions';
 import { EASE } from '@/lib/motion';
 import { VoteArrow } from './VoteArrow';
 

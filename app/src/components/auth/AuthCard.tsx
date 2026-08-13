@@ -25,7 +25,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Loader2, ShieldCheck, Zap, Heart } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import { authApi } from '@/lib/auth';
+import { googleOAuthUrl } from '@/actions/auth';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -102,7 +102,7 @@ export function AuthCard({ mode }: AuthCardProps) {
     setSubmitting(true);
     // Brief loading state before the page redirects to Passport
     setTimeout(() => {
-      window.location.href = authApi.googleOAuthUrl();
+      window.location.href = googleOAuthUrl();
     }, 350);
   };
 

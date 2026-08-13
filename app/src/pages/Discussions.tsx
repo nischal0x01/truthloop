@@ -40,10 +40,19 @@ import { ToastContainer, type Toast } from '@/components/discussions/Toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
   discussionKeys,
-  discussionsApi,
+  getDiscussionsQuery,
+  getDiscussionByIdQuery,
+  createDiscussionMutation,
+  updateDiscussionMutation,
+  deleteDiscussionMutation,
+  voteDiscussionMutation,
+  createDiscussionCommentMutation,
+  voteDiscussionCommentMutation,
+  updateDiscussionCommentMutation,
+  deleteDiscussionCommentMutation,
   type DiscussionPost,
   type SortOrder,
-} from '@/lib/discussions';
+} from '@/actions/discussions';
 import { EASE } from '@/lib/motion';
 
 export function Discussions() {
@@ -78,125 +87,91 @@ export function Discussions() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedPostId, navigate]);
 
-  /* ── Queries ── */
+  /* ── Queries (factories from actions/discussions.ts) ── */
 
-  const listQuery = useQuery({
-    queryKey: discussionKeys.list(sort),
-    queryFn: () => discussionsApi.list(sort),
-  });
+  const listQuery = useQuery(getDiscussionsQuery(sort));
 
   const detailQuery = useQuery({
-    queryKey: discussionKeys.detail(selectedPostId ?? ''),
-    queryFn: () => discussionsApi.get(selectedPostId!),
+    ...getDiscussionByIdQuery(selectedPostId ?? ''),
+    // getDiscussionByIdQuery already gates on `!!id`, but we re-affirm it here
+    // so the disabled-vs-idle state stays explicit at the call site.
     enabled: !!selectedPostId,
   });
 
-  /* ── Mutations ── */
+  /* ── Mutations (factories from actions/discussions.ts) ── */
 
   const voteMutation = useMutation({
-    mutationFn: ({ postId, vote }: { postId: string; vote: 1 | -1 | 0 }) =>
-      discussionsApi.vote(postId, vote),
+    ...voteDiscussionMutation(),
     onSuccess: (result) => {
       qc.setQueryData(discussionKeys.list(sort), (old: { posts: DiscussionPost[] } | undefined) => {
         if (!old) return old;
-        return { posts: old.posts.map((p) => (p.id === result.post.id ? result.post : p)) };
+        return {
+          posts: old.posts.map((p) =>
+            p.id === result.id
+              ? { ...p, upvotes: result.upvotes, downvotes: result.downvotes, myVote: result.myVote }
+              : p
+          ),
+        };
       });
-      if (selectedPostId === result.post.id) {
-        qc.setQueryData(discussionKeys.detail(selectedPostId), (old: { post: DiscussionPost } | undefined) => {
+      if (selectedPostId === result.id) {
+        qc.setQueryData(discussionKeys.detail(selectedPostId), (old: { post: DiscussionPost; comments: unknown[] } | undefined) => {
           if (!old) return old;
-          return { ...old, post: result.post };
+          return {
+            ...old,
+            post: {
+              ...old.post,
+              upvotes: result.upvotes,
+              downvotes: result.downvotes,
+              myVote: result.myVote,
+            },
+          };
         });
       }
     },
   });
 
   const createPostMutation = useMutation({
-    mutationFn: (input: { title: string; body: string; imageUrl?: string | null }) =>
-      discussionsApi.create(input),
+    ...createDiscussionMutation(),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: discussionKeys.list() });
       showToast('Discussion posted!');
     },
   });
 
   const updatePostMutation = useMutation({
-    mutationFn: ({
-      postId,
-      title,
-      body,
-      imageUrl,
-    }: {
-      postId: string;
-      title?: string;
-      body?: string;
-      imageUrl?: string | null;
-    }) => discussionsApi.update(postId, { title, body, imageUrl }),
+    ...updateDiscussionMutation(),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: discussionKeys.list() });
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId ?? '') });
       showToast('Changes saved!');
       navigate('/discussions', { replace: true });
     },
   });
 
   const deletePostMutation = useMutation({
-    mutationFn: (postId: string) => discussionsApi.delete(postId),
+    ...deleteDiscussionMutation(),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: discussionKeys.list() });
       showToast('Discussion deleted');
       navigate('/discussions', { replace: true });
     },
   });
 
   const createCommentMutation = useMutation({
-    mutationFn: (input: { discussionId: string; parentCommentId?: string | null; body: string }) =>
-      discussionsApi.createComment(input),
-    onSuccess: (_r, v) => {
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(v.discussionId) });
-      qc.invalidateQueries({ queryKey: discussionKeys.list() });
+    ...createDiscussionCommentMutation(),
+    onSuccess: () => {
       showToast('Comment posted!');
     },
   });
 
-  const voteCommentMutation = useMutation({
-    mutationFn: ({
-      commentId,
-      vote,
-      discussionId,
-    }: {
-      commentId: string;
-      vote: 1 | -1 | 0;
-      discussionId: string;
-    }) => discussionsApi.voteComment(commentId, vote, discussionId),
-    onSuccess: (_r, v) => {
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(v.discussionId) });
-    },
-  });
+  const voteCommentMutation = useMutation(voteDiscussionCommentMutation());
 
   const updateCommentMutation = useMutation({
-    mutationFn: ({
-      discussionId,
-      commentId,
-      body,
-    }: {
-      discussionId: string;
-      commentId: string;
-      body: string;
-    }) => discussionsApi.updateComment(discussionId, commentId, body),
+    ...updateDiscussionCommentMutation(),
     onSuccess: () => {
-      if (selectedPostId) {
-        qc.invalidateQueries({ queryKey: discussionKeys.detail(selectedPostId) });
-      }
       showToast('Comment updated!');
     },
   });
 
   const deleteCommentMutation = useMutation({
-    mutationFn: ({ discussionId, commentId }: { discussionId: string; commentId: string }) =>
-      discussionsApi.deleteComment(discussionId, commentId),
-    onSuccess: (_r, v) => {
-      qc.invalidateQueries({ queryKey: discussionKeys.detail(v.discussionId) });
-      qc.invalidateQueries({ queryKey: discussionKeys.list() });
+    ...deleteDiscussionCommentMutation(),
+    onSuccess: () => {
       showToast('Comment deleted');
     },
   });

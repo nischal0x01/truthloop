@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { UserAvatar } from '@/components/auth/UserAvatar';
 import { CommentComposer } from './CommentComposer';
-import { shortTimeAgo, type CommentNode, type CommentVoteValue } from '@/lib/comments';
+import { shortTimeAgo, type CommentNode, type CommentVoteValue } from '@/actions/comments';
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 

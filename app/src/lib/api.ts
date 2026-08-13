@@ -1,15 +1,21 @@
 /**
- * Typed fetch wrapper for the TruthLoop API.
+ * lib/api.ts — canonical, typed fetcher for the TruthLoop API.
  *
- * - Reads VITE_API_URL (default http://localhost:3000)
- * - Always sends cookies (session auth)
- * - Parses JSON or throws an `ApiError` with the server's `message` field
+ * Every feature module imports `api` (or `ApiError`) from here — never
+ * `fetch` directly — so auth cookies, base URL, JSON encoding, error shape,
+ * and content-type stay consistent across the app.
  *
- * Every feature module imports `api` from here — never `fetch` directly —
- * so auth, base URL, error shape, and content-type stay consistent.
+ * Two consumers:
+ *   1. `api<T>(path, opts)` → parses JSON, throws `ApiError` on non-2xx.
+ *      Use this for normal happy-path fetches where the caller wants the
+ *      parsed body or a thrown error.
+ *   2. `fetchRaw(path, opts)` → returns the raw `Response`. Use this when
+ *      the caller needs to inspect status (e.g. swallowing 401 in
+ *      `getMeQuery`) or upload a stream.
  */
 
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -28,8 +34,10 @@ interface RequestOptions {
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
   signal?: AbortSignal;
+  headers?: Record<string, string>;
 }
 
+/** Build `${API_BASE}${path}?${qs}` from a relative path and query map. */
 function buildUrl(path: string, query?: RequestOptions['query']): string {
   const base = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
   if (!query) return base;
@@ -41,25 +49,52 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return qs ? `${base}?${qs}` : base;
 }
 
-export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, query, signal } = opts;
+/** Build the standard RequestInit with credentials + JSON content-type. */
+function buildInit(method: string, body: unknown, headers: RequestOptions['headers'], signal?: AbortSignal): RequestInit {
   const init: RequestInit = {
     method,
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      ...(headers ?? {}),
+    },
     signal,
   };
   if (body !== undefined) {
     (init.headers as Record<string, string>)['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
   }
+  return init;
+}
 
-  const res = await fetch(buildUrl(path, query), init);
+/**
+ * Raw `fetch` against the API. Returns the `Response` so the caller decides
+ * how to interpret status codes — useful when you want to swallow 401, read
+ * a header, or stream the body.
+ *
+ * Defaults: `credentials: 'include'` (cookie auth), `Accept: application/json`,
+ * `Content-Type: application/json` when a body is set.
+ */
+export async function fetchRaw(path: string, opts: RequestOptions = {}): Promise<Response> {
+  const { method = 'GET', body, query, signal, headers } = opts;
+  return fetch(buildUrl(path, query), buildInit(method, body, headers, signal));
+}
 
-  // 204 / empty body — caller expects undefined.
+/**
+ * Typed JSON fetcher. Parses the response body and returns it as `T`.
+ *
+ * Behaviour:
+ *   - 204 / empty body → returns `undefined as T` (caller expects undefined).
+ *   - non-2xx → throws `ApiError` with the server's `message` field if present,
+ *     else `Request failed (${status})`.
+ *   - parse error on non-empty body → keeps raw text as `ApiError.body`.
+ */
+export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, query, signal, headers } = opts;
+  const res = await fetch(buildUrl(path, query), buildInit(method, body, headers, signal));
+
   if (res.status === 204) return undefined as T;
 
-  // Try to parse JSON regardless of ok, so error messages come through.
   let parsed: unknown = null;
   const text = await res.text();
   if (text) {
@@ -72,9 +107,9 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
 
   if (!res.ok) {
     const message =
-      (parsed && typeof parsed === 'object' && 'message' in parsed && typeof (parsed as { message: unknown }).message === 'string'
+      parsed && typeof parsed === 'object' && 'message' in parsed && typeof (parsed as { message: unknown }).message === 'string'
         ? (parsed as { message: string }).message
-        : null) ?? `Request failed (${res.status})`;
+        : `Request failed (${res.status})`;
     throw new ApiError(message, res.status, parsed);
   }
 

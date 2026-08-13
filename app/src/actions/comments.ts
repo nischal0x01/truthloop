@@ -1,12 +1,12 @@
 /**
- * Comments API + types — mirrors server/src/routes/comments.ts and the
- * `comments` / `comment_votes` tables.
+ * actions/comments.ts — Comment threads on individual claims.
  *
  * The server returns a FLAT, pre-sorted array. `buildTree` nests it on the
  * client so we can also apply optimistic inserts without a refetch.
  */
 
-import { api } from './api';
+import { api } from '@/lib/api';
+import { queryClient } from '@/providers';
 
 /* ── Types ── */
 
@@ -35,29 +35,10 @@ export interface CommentNode extends Comment {
 
 export type CommentVoteValue = 1 | -1 | 0;
 
-/* ── API ── */
-
-export const commentsApi = {
-  list: (claimId: string) =>
-    api<{ comments: Comment[]; maxDepth: number }>('/api/comments', {
-      query: { claimId },
-    }),
-
-  create: (input: { claimId: string; parentCommentId?: string | null; body: string }) =>
-    api<{ comment: Comment }>('/api/comments', { method: 'POST', body: input }),
-
-  update: (commentId: string, body: string) =>
-    api<{ comment: Comment }>(`/api/comments/${commentId}`, { method: 'PATCH', body: { body } }),
-
-  delete: (commentId: string) =>
-    api<void>(`/api/comments/${commentId}`, { method: 'DELETE' }),
-
-  vote: (commentId: string, vote: CommentVoteValue) =>
-    api<{ comment: { id: string; upvotes: number; downvotes: number; myVote: number } }>(
-      `/api/comments/${commentId}/vote`,
-      { method: 'POST', body: { vote } }
-    ),
-} as const;
+export interface CommentListResponse {
+  comments: Comment[];
+  maxDepth: number;
+}
 
 /* ── Query keys ── */
 
@@ -65,6 +46,76 @@ export const commentKeys = {
   all: ['comments'] as const,
   forClaim: (claimId: string) => [...commentKeys.all, 'claim', claimId] as const,
 };
+
+export const invalidateAllCommentQueries = () => {
+  queryClient.invalidateQueries({ queryKey: commentKeys.all });
+};
+
+/* ── Queries ── */
+
+export const getCommentsQuery = (claimId: string) => ({
+  queryKey: commentKeys.forClaim(claimId),
+  queryFn: async (): Promise<CommentListResponse> => {
+    return api<CommentListResponse>('/api/comments', {
+      query: { claimId },
+    });
+  },
+});
+
+/* ── Mutations ── */
+
+export const createCommentMutation = (claimId: string) => ({
+  mutationFn: async (input: {
+    parentCommentId?: string | null;
+    body: string;
+  }): Promise<Comment> => {
+    const { comment } = await api<{ comment: Comment }>('/api/comments', {
+      method: 'POST',
+      body: { claimId, ...input },
+    });
+    return comment;
+  },
+});
+
+export const updateCommentMutation = () => ({
+  mutationFn: async ({
+    commentId,
+    body,
+  }: {
+    commentId: string;
+    body: string;
+  }): Promise<Comment> => {
+    const { comment } = await api<{ comment: Comment }>(
+      `/api/comments/${commentId}`,
+      { method: 'PATCH', body: { body } }
+    );
+    return comment;
+  },
+});
+
+export const deleteCommentMutation = () => ({
+  mutationFn: async (commentId: string): Promise<void> => {
+    await api<void>(`/api/comments/${commentId}`, { method: 'DELETE' });
+  },
+});
+
+export const voteCommentMutation = () => ({
+  mutationFn: async ({
+    commentId,
+    vote,
+  }: {
+    commentId: string;
+    vote: CommentVoteValue;
+  }): Promise<{ id: string; upvotes: number; downvotes: number; myVote: number }> => {
+    const { comment } = await api<{
+      comment: { id: string; upvotes: number; downvotes: number; myVote: number };
+    }>(`/api/comments/${commentId}/vote`, {
+      method: 'POST',
+      body: { vote },
+    });
+    return comment;
+  },
+});
 
 /* ── Flat → tree ── */
 
@@ -80,7 +131,10 @@ const DEFAULT_MAX_DEPTH = 5;
  * Orphans (parent missing because it was hard-deleted) are promoted to
  * top-level rather than silently dropped, so no comment ever disappears.
  */
-export function buildTree(comments: Comment[], maxDepth = DEFAULT_MAX_DEPTH): CommentNode[] {
+export function buildTree(
+  comments: Comment[],
+  maxDepth = DEFAULT_MAX_DEPTH
+): CommentNode[] {
   const byId = new Map<string, CommentNode>();
   for (const c of comments) {
     byId.set(c.id, { ...c, depth: 0, children: [] });

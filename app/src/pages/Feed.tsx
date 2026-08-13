@@ -35,13 +35,15 @@ import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/AppNav';
 import {
   claimKeys,
-  claimsApi,
+  getClaimsQuery,
+  getMyGuessesQuery,
+  voteClaimMutation,
   CATEGORY_META,
   type Claim,
   type ClaimVerdict,
   type ClaimCategory,
   type UserGuessMap,
-} from '@/lib/claims';
+} from '@/actions/claims';
 
 interface FeedProps {
   /**
@@ -88,24 +90,19 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
     }
   }, [initialSearch, searchParams, setSearchParams]);
 
-  /* ── Queries ── */
-  const claimsQuery = useQuery({
-    queryKey: claimKeys.list(),
-    queryFn: () => claimsApi.list().then((r) => r.claims),
-  });
+  /* ── Queries (factories from actions/claims.ts) ── */
+  const claimsQuery = useQuery(getClaimsQuery());
 
   const guessesQuery = useQuery({
-    queryKey: claimKeys.myGuesses(),
-    queryFn: () => claimsApi.myGuesses().then((r) => r.guesses),
+    ...getMyGuessesQuery(),
     // Only the signed-in user has guesses. Don't fire on the public landing
     // page or after sign-out.
     enabled: isAuthed,
   });
 
-  /* ── Vote mutation ── */
+  /* ── Vote mutation (factory from actions/claims.ts) ── */
   const voteMutation = useMutation({
-    mutationFn: ({ claimId, answer }: { claimId: string; answer: ClaimVerdict }) =>
-      claimsApi.vote(claimId, answer),
+    ...voteClaimMutation(),
 
     onMutate: async ({ claimId, answer }) => {
       await qc.cancelQueries({ queryKey: claimKeys.myGuesses() });
@@ -126,8 +123,6 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
         ...(cur ?? {}),
         [claimId]: { answer: result.guess.userAnswer, correct: result.guess.isCorrect },
       }));
-      qc.invalidateQueries({ queryKey: claimKeys.list() });
-      qc.invalidateQueries({ queryKey: ['auth', 'me'] });
     },
   });
 

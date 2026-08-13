@@ -5,7 +5,8 @@
  * `useAuth()` with `{ user, status, error, signIn, signUp, signOut, isAuthenticated }`.
  *
  * State management:
- *   - `useQuery(['auth', 'me'])` is the canonical user cache.
+ *   - `useQuery` driven by the `getMeQuery()` factory in actions/auth.ts
+ *     is the canonical user cache.
  *   - sign-in / sign-up / sign-out mutations update that cache on success.
  *   - On first render we DON'T fetch /me — only after the app knows it
  *     might have a session (we always try, since cookies are auto-sent).
@@ -16,20 +17,16 @@
  */
 
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ApiError } from '@/lib/api';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  authApi,
+  getMeQuery,
+  signInMutation,
+  signUpMutation,
+  signOutMutation,
   type SafeUser,
   type SignInInput,
   type SignUpInput,
-} from '@/lib/auth';
-
-/* ── Query keys (centralised so cache invalidation stays consistent) ── */
-
-export const authKeys = {
-  me: ['auth', 'me'] as const,
-};
+} from '@/actions/auth';
 
 /* ── Public shape ── */
 
@@ -48,15 +45,8 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-/* ── Helpers ── */
-
-function isUnauthorized(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 401;
-}
-
 /** Map any thrown error to a user-friendly string for form errors. */
 function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return fallback;
 }
@@ -68,108 +58,48 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const qc = useQueryClient();
+  /* ── Current-user query (factory from actions/auth.ts) ── */
+  const meQuery = useQuery<SafeUser | null>(getMeQuery());
 
-  /* ── Current-user query ── */
-  // Always enabled: cookies are auto-sent, and a 401 just resolves to null.
-  // We never want the UI to "forget" the user between renders.
-  const meQuery = useQuery<SafeUser | null>({
-    queryKey: authKeys.me,
-    queryFn: async () => {
-      try {
-        const { user } = await authApi.me();
-        return user;
-      } catch (err) {
-        if (isUnauthorized(err)) return null;
-        throw err;
-      }
-    },
-    staleTime: 60_000, // 1 min — revalidate on focus / window-blur anyway
-    retry: false,
-  });
-
-  /* ── Mutations ── */
-
-  const signInMutation = useMutation<SafeUser, Error, SignInInput>({
-    mutationFn: async (input) => {
-      const { user } = await authApi.signIn(input);
-      return user;
-    },
-    onSuccess: (user) => {
-      qc.setQueryData(authKeys.me, user);
-    },
-  });
-
-  const signUpMutation = useMutation<SafeUser, Error, SignUpInput>({
-    mutationFn: async (input) => {
-      const { user } = await authApi.signUp(input);
-      return user;
-    },
-    onSuccess: (user) => {
-      qc.setQueryData(authKeys.me, user);
-    },
-  });
-
-  const signOutMutation = useMutation<void, Error, void>({
-    mutationFn: async () => {
-      await authApi.signOut();
-    },
-    onSettled: () => {
-      // Always clear the cache — sign-out succeeded or failed, the local
-      // session is gone either way.
-      qc.setQueryData(authKeys.me, null);
-      qc.invalidateQueries();
-    },
-  });
+  /* ── Mutations (factories from actions/auth.ts) ── */
+  const signInMut = useMutation<SafeUser, Error, SignInInput>(signInMutation());
+  const signUpMut = useMutation<SafeUser, Error, SignUpInput>(signUpMutation());
+  const signOutMut = useMutation<void, Error, void>(signOutMutation());
 
   /* ── Stable callbacks ── */
 
   const signIn = useCallback(
     async (input: SignInInput) => {
       try {
-        return await signInMutation.mutateAsync(input);
+        return await signInMut.mutateAsync(input);
       } catch (err) {
         throw new Error(errorMessage(err, 'Sign-in failed. Please try again.'));
       }
     },
-    [signInMutation]
+    [signInMut]
   );
 
   const signUp = useCallback(
     async (input: SignUpInput) => {
       try {
-        return await signUpMutation.mutateAsync(input);
+        return await signUpMut.mutateAsync(input);
       } catch (err) {
         throw new Error(errorMessage(err, 'Sign-up failed. Please try again.'));
       }
     },
-    [signUpMutation]
+    [signUpMut]
   );
 
   const signOut = useCallback(async () => {
     try {
-      await signOutMutation.mutateAsync();
+      await signOutMut.mutateAsync();
     } catch {
       // Even if the server call fails we want the UI to act signed out —
       // we already cleared the cache in onSettled.
     }
-  }, [signOutMutation]);
+  }, [signOutMut]);
 
-  const refresh = useCallback(async () => {
-    const result = await qc.fetchQuery({
-      queryKey: authKeys.me,
-      queryFn: async () => {
-        try {
-          const { user } = await authApi.me();
-          return user;
-        } catch (err) {
-          if (isUnauthorized(err)) return null;
-          throw err;
-        }
-      },
-    });
-    return result;
-  }, [qc]);
+  const refresh = useCallback(async () => meQuery.refetch().then((r) => r.data ?? null), [meQuery]);
 
   /* ── Derived status ── */
 

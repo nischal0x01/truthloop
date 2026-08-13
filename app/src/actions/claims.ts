@@ -1,16 +1,18 @@
 /**
- * Claims API + types — mirrors server/src/routes/claims.ts and the
- * `claims` table in server/src/db/schema.sql.
+ * actions/claims.ts — Claims + votes action factories.
  *
- * Exports:
- *   - Claim, ClaimVerdict, ClaimCategory types
- *   - UserGuess map type
- *   - claimsApi.{list, get, myGuesses, vote}
- *   - CATEGORY_META — readable labels, icons, and colour accents
- *   - claimKeys — query keys for TanStack Query cache management
+ * Mirrors server endpoints in `server/src/routes/claims.ts`. Use by
+ * `Feed.tsx` (list + myGuesses + vote) and any future claim-related pages.
+ *
+ * Centralised query keys via `claimKeys` keep cache invalidation
+ * consistent across pages — when a vote succeeds, `invalidateAllClaimQueries`
+ * is called so the feed list, per-user guesses, and auth user cache all
+ * refresh in lockstep.
  */
 
-import { api } from './api';
+import { ApiError, api } from '@/lib/api';
+import { queryClient } from '@/providers';
+import { invalidateAllAuthQueries } from './auth';
 
 /* ── Types ── */
 
@@ -63,23 +65,7 @@ export interface VoteResult {
   claim: Pick<Claim, 'id' | 'text' | 'verdict' | 'explanation' | 'sourceUrl' | 'category'>;
 }
 
-/* ── API ── */
-
-export const claimsApi = {
-  list: () => api<{ claims: Claim[] }>('/api/claims'),
-
-  get: (id: string) => api<{ claim: Claim }>(`/api/claims/${id}`),
-
-  myGuesses: () => api<{ guesses: UserGuessMap }>('/api/claims/me/guesses'),
-
-  vote: (claimId: string, userAnswer: ClaimVerdict) =>
-    api<VoteResult>(`/api/claims/${claimId}/guess`, {
-      method: 'POST',
-      body: { user_answer: userAnswer },
-    }),
-} as const;
-
-/* ── TanStack Query keys ── */
+/* ── Query keys ── */
 
 export const claimKeys = {
   all: ['claims'] as const,
@@ -87,6 +73,66 @@ export const claimKeys = {
   detail: (id: string) => [...claimKeys.all, 'detail', id] as const,
   myGuesses: () => [...claimKeys.all, 'me-guesses'] as const,
 };
+
+/** Invalidate every cache that depends on claim or vote data. */
+export const invalidateAllClaimQueries = () => {
+  queryClient.invalidateQueries({ queryKey: claimKeys.all });
+  // User points / streak live on the auth /me cache and update after a vote.
+  invalidateAllAuthQueries();
+};
+
+/* ── Queries ── */
+
+export const getClaimsQuery = () => ({
+  queryKey: claimKeys.list(),
+  queryFn: async (): Promise<Claim[]> => {
+    const { claims } = await api<{ claims: Claim[] }>('/api/claims');
+    return claims;
+  },
+});
+
+export const getClaimByIdQuery = (id: string) => ({
+  queryKey: claimKeys.detail(id),
+  queryFn: async (): Promise<Claim> => {
+    const { claim } = await api<{ claim: Claim }>(`/api/claims/${id}`);
+    return claim;
+  },
+});
+
+export const getMyGuessesQuery = () => ({
+  queryKey: claimKeys.myGuesses(),
+  queryFn: async (): Promise<UserGuessMap> => {
+    const { guesses } = await api<{ guesses: UserGuessMap }>(
+      '/api/claims/me/guesses'
+    );
+    return guesses;
+  },
+  // Only the signed-in user has guesses. Disable on landing or after
+  // sign-out so we don't get a noisy 401 in flight.
+  enabled: true, // caller can override with `enabled: isAuthed` at use-site
+});
+
+/* ── Mutations ── */
+
+export const voteClaimMutation = () => ({
+  mutationFn: async ({
+    claimId,
+    answer,
+  }: {
+    claimId: string;
+    answer: ClaimVerdict;
+  }): Promise<VoteResult> => {
+    return api<VoteResult>(`/api/claims/${claimId}/guess`, {
+      method: 'POST',
+      body: { user_answer: answer },
+    });
+  },
+  // Server is the source of truth — refresh everything that depends on
+  // votes or user points.
+  onSuccess: () => {
+    invalidateAllClaimQueries();
+  },
+});
 
 /* ── Category metadata (label + icon + colour accent) ── */
 
@@ -161,15 +207,13 @@ export const CATEGORY_META: Record<ClaimCategory, CategoryMeta> = {
   },
 };
 
-/* ── Truncate claim text for feed previews (~280 chars) ── */
+/* ── Helpers ── */
 
 const TRUNCATE_LIMIT = 280;
 export function truncateClaim(text: string, limit = TRUNCATE_LIMIT): string {
   if (text.length <= limit) return text;
   return `${text.slice(0, limit - 1).trimEnd()}…`;
 }
-
-/* ── Relative time helper (no extra deps) ── */
 
 export function timeAgo(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -186,3 +230,6 @@ export function timeAgo(iso: string | null | undefined): string {
   if (diffDay < 7) return `${diffDay}d ago`;
   return new Date(iso).toLocaleDateString();
 }
+
+/* Re-export ApiError so consumers don't have to import it separately. */
+export { ApiError };

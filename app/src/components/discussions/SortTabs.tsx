@@ -11,7 +11,7 @@
 
 import { Award, Clock, TrendingUp } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import type { SortOrder } from '@/lib/discussions';
+import type { SortOrder } from '@/actions/discussions';
 
 const SORT_OPTIONS: { value: SortOrder; label: string; icon: React.ReactNode }[] = [
   { value: 'hot', label: 'Hot', icon: <TrendingUp size={13} aria-hidden="true" /> },

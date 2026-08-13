@@ -3,7 +3,7 @@
  * from `@/lib/claims` for label + icon + accent colour.
  */
 
-import { CATEGORY_META, type ClaimCategory } from '@/lib/claims';
+import { CATEGORY_META, type ClaimCategory } from '@/actions/claims';
 
 interface CategoryPillProps {
   category: ClaimCategory;

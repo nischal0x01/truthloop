@@ -1,12 +1,13 @@
 /**
- * Profile API + types — mirrors server/src/routes/users.ts.
+ * actions/profile.ts — Profile payload for /profile.
  *
  * One composite call: GET /api/users/me/profile returns everything the
- * /profile page renders (user + stats + badges + recent activity + weekly
- * report). No client-side joins required.
+ * page renders (user + stats + badges + recent activity + weekly report).
+ * No client-side joins required.
  */
 
-import { api } from './api';
+import { api } from '@/lib/api';
+import { queryClient } from '@/providers';
 
 /* ── Types ── */
 
@@ -72,12 +73,6 @@ export interface ProfilePayload {
   latestWeeklyReport: WeeklyReportPreview | null;
 }
 
-/* ── API ── */
-
-export const profileApi = {
-  me: () => api<ProfilePayload>('/api/users/me/profile'),
-} as const;
-
 /* ── Query keys ── */
 
 export const profileKeys = {
@@ -85,13 +80,56 @@ export const profileKeys = {
   me: () => [...profileKeys.all, 'me'] as const,
 };
 
-/* ── Helpers ── */
+export const invalidateAllProfileQueries = () => {
+  queryClient.invalidateQueries({ queryKey: profileKeys.all });
+};
 
-const RARITY_META: Record<Rarity, { label: string; bg: string; ink: string; ring: string }> = {
-  common:    { label: 'Common',    bg: 'bg-muted',     ink: 'text-foreground',         ring: 'border-foreground/20' },
-  rare:      { label: 'Rare',      bg: 'bg-accent',    ink: 'text-accent-foreground',  ring: 'border-accent' },
-  epic:      { label: 'Epic',      bg: 'bg-highlight', ink: 'text-highlight-foreground', ring: 'border-highlight' },
-  legendary: { label: 'Legendary', bg: 'bg-warning',   ink: 'text-warning-foreground', ring: 'border-warning' },
+/* ── Queries ── */
+
+export const getMyProfileQuery = () => ({
+  queryKey: profileKeys.me(),
+  queryFn: async (): Promise<ProfilePayload> => {
+    return api<ProfilePayload>('/api/users/me/profile');
+  },
+  // Caller should pass `enabled: status === 'authenticated'` at use-site.
+  // Don't retry on 401 — auth context already knows the user is signed out.
+  retry: (failureCount: number, error: unknown) => {
+    const status = (error as { status?: number } | null)?.status;
+    if (status === 401 || status === 403) return false;
+    return failureCount < 1;
+  },
+});
+
+/* ── Helpers (re-exported for the page) ── */
+
+const RARITY_META: Record<
+  Rarity,
+  { label: string; bg: string; ink: string; ring: string }
+> = {
+  common: {
+    label: 'Common',
+    bg: 'bg-muted',
+    ink: 'text-foreground',
+    ring: 'border-foreground/20',
+  },
+  rare: {
+    label: 'Rare',
+    bg: 'bg-accent',
+    ink: 'text-accent-foreground',
+    ring: 'border-accent',
+  },
+  epic: {
+    label: 'Epic',
+    bg: 'bg-highlight',
+    ink: 'text-highlight-foreground',
+    ring: 'border-highlight',
+  },
+  legendary: {
+    label: 'Legendary',
+    bg: 'bg-warning',
+    ink: 'text-warning-foreground',
+    ring: 'border-warning',
+  },
 };
 
 export function rarityMeta(rarity: Rarity) {
