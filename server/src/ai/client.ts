@@ -105,6 +105,19 @@ export interface GenerateTextOptions {
   maxTokens?: number;
   /** Optional abort signal. */
   signal?: AbortSignal;
+  /**
+   * Enable Anthropic's hosted `web_search` server-side tool. The model will
+   * fetch live search results before producing its final answer, so the
+   * `sources[]` URLs it cites are real and recent instead of fabricated
+   * from training data.
+   *
+   * Only takes effect when `ANTHROPIC_BASE_URL` points at the real
+   * Anthropic API (i.e. contains `anthropic.com`). On other gateways
+   * (MiniMax, OpenRouter, etc.) the tool is silently dropped with a
+   * one-time console warning — we still produce an answer, just without
+   * live verification.
+   */
+  enableWebSearch?: boolean;
 }
 
 export interface GenerateStructuredOptions<T> extends GenerateTextOptions {
@@ -143,6 +156,29 @@ function isRetryableStatus(status: number): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The Anthropic-hosted `web_search` server-side tool is only available when
+ * we talk to api.anthropic.com (or its beta aliases). Third-party gateways
+ * that proxy the Anthropic-compatible API may not forward server-side
+ * tools, so we detect the base URL and silently disable the tool on
+ * non-Anthropic endpoints rather than failing the whole call.
+ */
+function isAnthropicHosted(): boolean {
+  const url = ANTHROPIC_BASE_URL.toLowerCase();
+  return url.includes('anthropic.com') || url.includes('api.anthropic');
+}
+
+let _webSearchUnsupportedWarned = false;
+function maybeWarnWebSearchUnsupported() {
+  if (_webSearchUnsupportedWarned) return;
+  _webSearchUnsupportedWarned = true;
+  console.warn(
+    `[ai] enableWebSearch was requested but ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL} ` +
+      'does not appear to be Anthropic-hosted. Skipping web_search tool — ' +
+      'the model will answer from training data only.'
+  );
 }
 
 /**
@@ -255,6 +291,13 @@ export async function generateText(opts: GenerateTextOptions): Promise<string> {
   const client = getClient();
   const { system, prompt } = composePrompt(opts);
 
+  // Conditionally attach the web_search server-side tool. Only Anthropic-hosted
+  // base URLs support it; on third-party gateways we silently drop the option.
+  const tools = opts.enableWebSearch && isAnthropicHosted()
+    ? [{ type: 'web_search_20250305' as const, name: 'web_search', max_uses: 5 }]
+    : undefined;
+  if (opts.enableWebSearch && !tools) maybeWarnWebSearchUnsupported();
+
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
@@ -264,12 +307,17 @@ export async function generateText(opts: GenerateTextOptions): Promise<string> {
         max_tokens: clampMaxTokens(opts.maxTokens),
         system,
         messages: [{ role: 'user', content: prompt }],
+        ...(tools ? { tools } : {}),
         ...(opts.signal ? { signal: opts.signal } : {}),
       });
 
-      // Extract first text block; bail if there is none.
-      const block = res.content.find((b) => b.type === 'text');
-      if (!block || block.type !== 'text' || !block.text.trim()) {
+      // Extract the LAST text block — when web_search is active, the model
+      // may emit intermediate "thinking aloud" text before searching, and we
+      // want the final answer (after it has consulted the sources).
+      const blocks = (res.content || []) as Array<{ type: string; text?: string }>;
+      const textBlocks = blocks.filter((b) => b.type === 'text' && typeof b.text === 'string' && b.text.trim());
+      const lastText = textBlocks.length ? textBlocks[textBlocks.length - 1] : null;
+      if (!lastText || lastText.type !== 'text' || !lastText.text?.trim()) {
         // Two failure shapes here:
         //   1) Model returned no text block at all (truly empty/unconfigured).
         //   2) Model hit `stop_reason: "max_tokens"` mid-thinking on a model
@@ -291,7 +339,7 @@ export async function generateText(opts: GenerateTextOptions): Promise<string> {
           }
         );
       }
-      return block.text.trim();
+      return lastText.text.trim();
     } catch (err) {
       lastError = err;
       // Config errors are not retryable.

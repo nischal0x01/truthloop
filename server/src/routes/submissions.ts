@@ -31,6 +31,7 @@ import {
   generateStructured,
   type FactCheck,
 } from '@/ai';
+import { searchWeb } from '@/ai/search';
 
 /* ── Setup ── */
 
@@ -133,8 +134,15 @@ router.post('/', requireAuth, async (req, res) => {
   const { text } = submitSchema.parse(req.body);
   const userId = (req.user as { id: string }).id;
 
-  // 1. AI fact-check. STRONG_MODEL = claude-opus-4-1 per spec §2.
-  const { system, prompt, userInput } = buildLiveFactCheckPrompt({ text });
+  // 1. Pre-fetch live web evidence via MiniMax's coding_plan search endpoint
+  //    (independent of the LLM gateway). If the key is missing or the call
+  //    fails, results is [] and the prompt explicitly downgrades confidence.
+  const searchResults = await searchWeb(text, { maxResults: 5 });
+
+  // 2. AI fact-check. STRONG_MODEL = claude-opus-4-1 when on Anthropic, the
+  //    MiniMax strong tier otherwise. The prompt injects the live search
+  //    results so Claude answers from current sources, not stale training data.
+  const { system, prompt, userInput } = buildLiveFactCheckPrompt({ text, searchResults });
   const factCheck = await generateStructured<FactCheck>({
     system,
     prompt,
@@ -142,6 +150,7 @@ router.post('/', requireAuth, async (req, res) => {
     schema: factCheckSchema,
     fallback: factCheckFallback,
     model: 'strong',
+    maxTokens: 2048,
   });
 
   // 2. Award points only if the user hasn't hit the daily cap.
