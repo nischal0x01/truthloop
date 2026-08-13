@@ -26,6 +26,7 @@ import {
   type SafeUser,
   type SignInInput,
   type SignUpInput,
+  type SignOutResponse,
 } from '@/actions/auth';
 
 /* ── Public shape ── */
@@ -64,7 +65,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   /* ── Mutations (factories from actions/auth.ts) ── */
   const signInMut = useMutation<SafeUser, Error, SignInInput>(signInMutation());
   const signUpMut = useMutation<SafeUser, Error, SignUpInput>(signUpMutation());
-  const signOutMut = useMutation<void, Error, void>(signOutMutation());
+  const signOutMut = useMutation<SignOutResponse, Error, void>(signOutMutation());
 
   /* ── Stable callbacks ── */
 

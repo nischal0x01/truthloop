@@ -18,6 +18,15 @@ import { z } from 'zod';
 import { eq, sql, desc, and } from 'drizzle-orm';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
+import {
+  blindSpotNarrativeFallback,
+  generateText,
+} from '@/ai';
+import {
+  buildBlindSpotNarrativePrompt,
+  normalizeBlindSpotNarrative,
+} from '@/ai/prompts/blind-spot-narrative';
+import { categoryLabel } from '@/lib/category-label';
 
 const router = Router();
 
@@ -309,7 +318,10 @@ function blindSpotFromBreakdown(
 }
 
 function blankNarrative(): null {
-  // AI narrative lives in `.ai/05-ai-prompts.md` and isn't wired yet — leave null.
+  // On-the-fly computation paths don't get an AI-generated narrative — they'd
+  // need a structured call. The cached weekly row's narrative is set by the
+  // regenerate endpoint (via Claude); custom/month/quarter ranges reuse the
+  // public fallback so the section never looks broken.
   return null;
 }
 
@@ -562,14 +574,44 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
   const replayClaimId = await firstWrongClaimFor(userId, fromIso, toIso);
   const globalAverageAccuracy = await globalAverageFor(fromIso, toIso);
 
-  const narrative =
-    blindSpotCategory && breakdownWithAccuracy.find((r) => r.category === blindSpotCategory)
-      ? (() => {
-          const r = breakdownWithAccuracy.find((x) => x.category === blindSpotCategory);
-          if (!r) return null;
-          return `You missed ${Math.round((1 - r.accuracy) * 100)}% of ${blindSpotCategory.replace(/_/g, ' ')} claims this week — that's the pattern worth studying.`;
-        })()
-      : null;
+  // Generate the supportive one-line narrative via Claude (Tier 1 #2).
+  // Falls back to a generic string if the AI is misconfigured or returns junk.
+  let narrative: string | null = null;
+  if (blindSpotCategory) {
+    const blindSpotRow = breakdownWithAccuracy.find(
+      (r) => r.category === blindSpotCategory
+    );
+    if (blindSpotRow) {
+      const inputs = {
+        categoryLabel: categoryLabel(blindSpotCategory),
+        userMissRate: 1 - blindSpotRow.accuracy,
+        globalMissRate:
+          globalAverageAccuracy !== null ? 1 - globalAverageAccuracy : 0.5,
+        voteCount: blindSpotRow.total,
+        periodLabel: 'the last 7 days',
+      };
+      const built = buildBlindSpotNarrativePrompt(inputs);
+      try {
+        const rawText = await generateText({
+          ...built,
+          maxTokens: 256,
+        });
+        const normalized = normalizeBlindSpotNarrative(rawText);
+        narrative = normalized.narrative;
+        // Light validation: must mention "you" and ≥ 12 chars.
+        if (
+          !narrative ||
+          narrative.length < 12 ||
+          !/\byou\b/i.test(narrative)
+        ) {
+          narrative = blindSpotNarrativeFallback.narrative;
+        }
+      } catch (err) {
+        console.warn('[reports] narrative generation failed, using fallback.', err);
+        narrative = blindSpotNarrativeFallback.narrative;
+      }
+    }
+  }
 
   const existing = await db
     .select({ id: schema.weeklyReports.id })

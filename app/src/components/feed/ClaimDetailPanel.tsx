@@ -32,7 +32,6 @@ import {
   deleteCommentMutation,
   voteCommentMutation,
   type Comment,
-  type CommentVoteValue,
 } from '@/actions/comments';
 import {
   CATEGORY_META,

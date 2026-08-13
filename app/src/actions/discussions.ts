@@ -155,7 +155,7 @@ export const createDiscussionMutation = () => ({
     });
     return post;
   },
-  onSuccess: (post) => {
+  onSuccess: (post: DiscussionPost) => {
     // Prepend to every sort's list cache so the new post shows up
     // immediately in whichever tab the user is on. The server's sort
     // algorithm will eventually reorder, but for the first few seconds the
@@ -188,7 +188,7 @@ export const updateDiscussionMutation = () => ({
     );
     return post;
   },
-  onSuccess: (post) => {
+  onSuccess: (post: DiscussionPost) => {
     patchPost(post.id, () => post);
   },
 });
@@ -198,7 +198,7 @@ export const deleteDiscussionMutation = () => ({
     await api<void>(`/api/discussions/${postId}`, { method: 'DELETE' });
     return { id: postId };
   },
-  onSuccess: ({ id }) => {
+  onSuccess: ({ id }: { id: string }) => {
     // Remove from every list cache so the post vanishes immediately.
     updateAllListCaches((old) => ({
       posts: old.posts.filter((p) => p.id !== id),
@@ -230,7 +230,12 @@ export const voteDiscussionMutation = () => ({
     });
     return post;
   },
-  onSuccess: (result) => {
+  onSuccess: (result: {
+    id: string;
+    upvotes: number;
+    downvotes: number;
+    myVote: DiscussionVoteValue;
+  }) => {
     patchPost(result.id, (p) => ({
       ...p,
       upvotes: result.upvotes,
@@ -257,7 +262,10 @@ export const createDiscussionCommentMutation = () => ({
     );
     return comment;
   },
-  onSuccess: (comment, vars) => {
+  onSuccess: (
+    comment: DiscussionComment,
+    vars: { discussionId: string; parentCommentId?: string | null; body: string }
+  ) => {
     // Append to detail cache so the new comment shows immediately.
     updateDetailCache(vars.discussionId, (old) => ({
       ...old,
@@ -288,7 +296,10 @@ export const updateDiscussionCommentMutation = () => ({
     );
     return comment;
   },
-  onSuccess: (comment, vars) => {
+  onSuccess: (
+    comment: DiscussionComment,
+    vars: { discussionId: string; commentId: string; body: string }
+  ) => {
     updateDetailCache(vars.discussionId, (old) => ({
       ...old,
       comments: old.comments.map((c) =>
@@ -312,7 +323,13 @@ export const deleteDiscussionCommentMutation = () => ({
     );
     return { discussionId, commentId };
   },
-  onSuccess: ({ discussionId, commentId }) => {
+  onSuccess: ({
+    discussionId,
+    commentId,
+  }: {
+    discussionId: string;
+    commentId: string;
+  }) => {
     updateDetailCache(discussionId, (old) => ({
       ...old,
       comments: old.comments.map((c) =>
@@ -353,7 +370,15 @@ export const voteDiscussionCommentMutation = () => ({
     });
     return comment;
   },
-  onSuccess: (result, vars) => {
+  onSuccess: (
+    result: {
+      id: string;
+      upvotes: number;
+      downvotes: number;
+      myVote: DiscussionVoteValue;
+    },
+    vars: { commentId: string; vote: DiscussionVoteValue; discussionId: string }
+  ) => {
     updateDetailCache(vars.discussionId, (old) => ({
       ...old,
       comments: old.comments.map((c) =>

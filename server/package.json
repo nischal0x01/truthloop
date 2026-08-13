@@ -21,6 +21,7 @@
     "seed:prod:yes": "tsx scripts/seed-prod.ts --yes"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@types/multer": "^2.2.0",
     "cloudinary": "^2.10.0",
     "compression": "^1.8.1",

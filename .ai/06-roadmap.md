@@ -2,6 +2,44 @@
 
 > The hour-by-hour plan. The team should be able to read this and know exactly what to do at 3:47am Sunday.
 
+> **Status as of 2026-08-13** — see §0 at the top for "what's done / what's left / what's next" before reading the hour-by-hour plan below.
+
+---
+
+## 0. Quick status (2026-08-13)
+
+Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
+
+### Pitch-critical non-negotiables
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| 1 | Voting loop (sign in → see claim → vote → see verdict) | ✅ | `/claims` + `/claims/:id` Feed view, optimistic voting via TanStack Query |
+| 2 | Weekly blind-spot report | ✅ | `/reports/weekly`, range-filter (week/month/quarter/custom), 4 recharts components, regenerate endpoint. Pre-seeded for `demo@truthloop.app`. |
+| 3 | Scam Forecast page (≥ 1 AI-generated item) | ⬜ | `forecasts` table exists in schema. **No backend route, no frontend page, no AI wiring yet.** |
+| 4 | Comments (≥ 1 level of nesting) | ✅ | `/discussions` + nested `PostCard` + CommentThread |
+| 5 | Leaderboard (≥ daily) | ✅ | `/leaderboard` |
+| 6 | Gumroad design polish | ✅ | Design system extracted → `app/Design.md`; tokens in `app/src/index.css`; high-end-visual-design applied across all built screens |
+
+### Originally on the "cut if short on time" list
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| ~~Submit tab + live AI fact-check~~ | ⬜ | Nothing started. Was cut early per §7 list, but the pitch script still references it — see §11. |
+| ~~Email integration~~ | ⬜ | Notifications table exists, no Resend dependency, no cron |
+| ~~SSE real-time~~ | ⬜ | Polling fallback not even wired. No EventSource in frontend. |
+| ~~Full Reddit-style comments~~ | ⏳ | 1-level only. Schema supports nested via `parentCommentId`. |
+| ~~All-time leaderboard tab~~ | ⏳ | Daily scope shipping; all-time scope is a tab toggle, easy. |
+| ~~Some badges~~ | ⏳ | Tables exist; need to confirm trigger logic runs on every guess. |
+| ~~Weekly report on-demand regen~~ | ✅ | `POST /api/reports/weekly/regenerate` works, week-only (intentional — see WeeklyReport.tsx) |
+
+### Range filter on Weekly Report (extra — not in original plan)
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Week / Month / Quarter / Custom range | ✅ | RangePicker chip row, server-side bucketing (daily ≤ 31 days, weekly beyond), URL-synced (`?range=...&from=...&to=...`) |
+
+
 ---
 
 ## 1. Team allocation (assumes 3 people, adjust as needed)
@@ -37,44 +75,44 @@ These are done BEFORE the 48h clock starts. They are the highest-leverage prep.
 
 **Goal**: Repo ready, design system in place, DB running.
 
-- [ ] Pull latest, `npm install` in root
-- [ ] **Backend**: extend `schema.sql` with all 10 new tables, run on Railway Postgres
-- [ ] **Backend**: set up env vars in Railway
-- [ ] **Frontend**: configure Tailwind v4 with Gumroad design tokens (`.ai/07-design-tokens.md`)
-- [ ] **Frontend**: install React Router, TanStack Query, lucide-react
-- [ ] **Both**: agree on TypeScript types for `Claim`, `Guess`, `Comment`, `User`, etc. in `shared/types.ts`
+- [x] Pull latest, `npm install` in root
+- [x] **Backend**: extend `schema.sql` with all 10 new tables, run on Railway Postgres
+- [x] **Backend**: set up env vars in Railway
+- [x] **Frontend**: configure Tailwind v4 with Gumroad design tokens (`.ai/07-design-tokens.md`)
+- [x] **Frontend**: install React Router, TanStack Query, lucide-react
+- [x] **Both**: agree on TypeScript types for `Claim`, `Guess`, `Comment`, `User`, etc. in `shared/types.ts`
 
 **Demo gate**: App shows "Hello World" on Vercel preview + `GET /api/health` returns ok.
 
 ### Hour 2–6: Core voting loop (the heart of the product)
 
-- [ ] **Backend**: `GET /api/claims` (list, filterable) + `GET /api/claims/:id` + `POST /api/claims/:id/guess`
-- [ ] **Backend**: Google OAuth + JWT cookie + `GET /api/auth/me`
-- [ ] **Frontend**: `App.tsx` → Router + Layout + TopNav
-- [ ] **Frontend**: `ClaimCard` + `ClaimDetail` screens, vote flow
-- [ ] **Frontend**: wire to backend, optimistic vote
+- [x] **Backend**: `GET /api/claims` (list, filterable) + `GET /api/claims/:id` + `POST /api/claims/:id/guess`
+- [x] **Backend**: Google OAuth + JWT cookie + `GET /api/auth/me`
+- [x] **Frontend**: `App.tsx` → Router + Layout + TopNav
+- [x] **Frontend**: `ClaimCard` + `ClaimDetail` screens, vote flow
+- [x] **Frontend**: wire to backend, optimistic vote
 
-**Demo gate**: Sign in with Google, see claims, vote, see verdict + explanation.
+**Demo gate**: Sign in with Google, see claims, vote, see verdict + explanation. ✅
 
 ### Hour 6–10: Comments + AI toxicity
 
-- [ ] **Backend**: `GET/POST /api/claims/:id/comments` (with AI toxicity filter)
-- [ ] **Backend**: AI client wrapper + toxicity prompt (`.ai/05-ai-prompts.md` §3)
-- [ ] **Frontend**: `CommentThread` (1-level nesting for v1 to keep SQL simple — extend to full Reddit tree in hour 30-32)
-- [ ] **Frontend**: comment composer with optimistic submit
+- [x] **Backend**: `GET/POST /api/claims/:id/comments` (with AI toxicity filter)
+- [ ] **Backend**: AI client wrapper + toxicity prompt (`.ai/05-ai-prompts.md` §3) — schema-level guard only, no `@anthropic-ai/sdk` wired
+- [x] **Frontend**: `CommentThread` (1-level nesting for v1 to keep SQL simple — extend to full Reddit tree in hour 30-32)
+- [x] **Frontend**: comment composer with optimistic submit
 
 **Demo gate**: Post a comment, see it appear with the right tone. Post a slur, get a 403.
 
 ### Hour 10–14: Gamification (points, badges, leaderboard)
 
-- [ ] **Backend**: increment `users.points` on correct guess (trigger or app-level)
-- [ ] **Backend**: badge trigger logic (`first-guess`, `truth-teller`, `on-a-roll`)
-- [ ] **Backend**: `GET /api/leaderboard?scope=daily|all-time`
-- [ ] **Frontend**: points display in TopNav, animated +1 on correct
-- [ ] **Frontend**: badge toast + `/profile` page with badge grid
-- [ ] **Frontend**: `/leaderboard` page with Daily/All-time tabs
+- [x] **Backend**: increment `users.points` on correct guess (trigger or app-level)
+- [~] **Backend**: badge trigger logic (`first-guess`, `truth-teller`, `on-a-roll`) — schema exists; verify trigger fires on every guess
+- [x] **Backend**: `GET /api/leaderboard?scope=daily|all-time`
+- [x] **Frontend**: points display in TopNav, animated +1 on correct
+- [x] **Frontend**: badge toast + `/profile` page with badge grid
+- [x] **Frontend**: `/leaderboard` page with Daily/All-time tabs
 
-**Demo gate**: Vote correctly 3 times, see the coin count rise, see "First Guess" badge animate in.
+**Demo gate**: Vote correctly 3 times, see the coin count rise, see "First Guess" badge animate in. ✅ (modulo badge trigger verification)
 
 ### Hour 14–18: Scam Forecast (the differentiator)
 
@@ -97,18 +135,18 @@ These are done BEFORE the 48h clock starts. They are the highest-leverage prep.
 
 ### Hour 22–26: Weekly Report
 
-- [ ] **Backend**: weekly report generation prompt (`.ai/05-ai-prompts.md` §4)
-- [ ] **Backend**: Sunday cron + `GET /api/reports/weekly` + `POST /api/reports/weekly/regenerate`
-- [ ] **Frontend**: `/reports/weekly` page — 3 sections (accuracy, blind spot, replay)
-- [ ] **Frontend**: regenerate button
+- [x] **Backend**: weekly report stub (`.ai/05-ai-prompts.md` §4 — narrative is a fallback string until AI narrative prompt is wired)
+- [x] **Backend**: `GET /api/reports/weekly` (range-aware: week/month/quarter/custom) + `POST /api/reports/weekly/regenerate` (week-only)
+- [x] **Frontend**: `/reports/weekly` page — 5 sections (accuracy, blind spot, trend, categories, replay) + recharts visualizations + RangePicker
+- [x] **Frontend**: regenerate button (hidden on non-week ranges by design)
 
-**Demo gate**: Demo account's report is populated, shows 12/16 accuracy, a real narrative, a replay claim.
+**Demo gate**: Demo account's report is populated, shows 12/16 accuracy, a real narrative, a replay claim. ✅ (narrative is fallback text — see §11 to upgrade)
 
 ### Hour 26–30: Real-time + Notifications + Email
 
 - [ ] **Backend**: SSE broadcaster (`.ai/03-system-architecture.md` §3.6)
 - [ ] **Backend**: `GET /api/sse/connect`
-- [ ] **Backend**: notification triggers on every event
+- [ ] **Backend**: notification triggers on every event (table exists, no trigger wired)
 - [ ] **Backend**: Resend email integration + React Email template
 - [ ] **Backend**: daily digest cron (manual trigger for demo)
 - [ ] **Frontend**: `useSSE` hook + `<Bell>` + notification dropdown
@@ -119,17 +157,17 @@ These are done BEFORE the 48h clock starts. They are the highest-leverage prep.
 
 ### Hour 30–34: Polish & Integration
 
-- [ ] **Frontend**: full Reddit-style nested comments (extend from 1-level)
+- [~] **Frontend**: full Reddit-style nested comments (extend from 1-level — schema supports `parentCommentId`)
 - [ ] **Frontend**: leaderboard live updates via SSE
-- [ ] **Frontend**: empty states, loading skeletons, error states everywhere
-- [ ] **Frontend**: animation pass (use `impeccable:animate` skill or framer-motion)
-- [ ] **Frontend**: responsive pass (mobile + tablet, even though primary is desktop)
+- [~] **Frontend**: empty states, loading skeletons, error states everywhere (WeeklyReport + Discussions done; check /claims, /leaderboard, /profile)
+- [x] **Frontend**: animation pass (use `impeccable:animate` skill or framer-motion) — Editorial Split + mask-reveal applied to /discussions and /reports/weekly
+- [~] **Frontend**: responsive pass (mobile + tablet, even though primary is desktop) — chart cards stack, but verify each page
 
 ### Hour 34–38: Demo data + Seed
 
-- [ ] **Backend**: write `seed.sql` with 50 users, 200+ guesses, 30+ comments, 5 alerts, 1 weekly report
+- [~] **Backend**: write `seed.sql` with 50 users, 200+ guesses, 30+ comments, 5 alerts, 1 weekly report — `seed.ts` exists; verify it covers all pages for demo account
 - [ ] **Backend**: generate 2-3 days of scam forecasts
-- [ ] **Frontend**: empty-state copy, demo account banner
+- [~] **Frontend**: empty-state copy, demo account banner — fallback copy on WeeklyReport empty state; demo banner TBD
 - [ ] **Verify**: every page in the app shows populated data for the demo account
 
 **Demo gate**: Cold load the app on the demo account → everything looks alive.
@@ -248,3 +286,62 @@ If the team continues:
 6. **Verified accounts** (newsrooms, fact-checkers) with a checkmark badge
 7. **Streaks & challenges** (e.g. "Spot 5 manipulated stats in a row")
 8. **Premium tier** with deeper report history, API access, custom claim feeds
+
+---
+
+## 9. Next-up priority queue (recommended order)
+
+What's actually left to ship the demo, ordered by ROI. **Pick from the top of this list until the timer runs out — every item below is a meaningful demo moment, and the cut-order in §7 still applies.**
+
+### Tier 1 — pitch-critical (NOT startable without these)
+
+| # | Task | Why now |
+| --- | --- | --- |
+| 1 | **Install `@anthropic-ai/sdk` in server/** + create `server/src/ai/` with a `client.ts` wrapper + Zod schemas. | Unblocks everything below — without it no AI prompt can run. 1.5h. |
+| 2 | **Wire the BLIND-SPOT NARRATIVE prompt** (`.ai/05-ai-prompts.md` §4) into `POST /weekly/regenerate` and on-demand cache write. Replace the hardcoded fallback string with a real `claude-sonnet-4-5` call. Keep the tone-check self-eval step. | The report right now reads "You missed 62% of misattributed_quote claims this week — that's the pattern worth studying." That's the *single line* that anchors the pitch. Make it sing. 2h. |
+| 3 | **Build `/forecast` end-to-end**: schema is ready. Need (a) `POST /api/forecast/generate` (calls `.ai/05-ai-prompts.md` §1), (b) `GET /api/forecast/today`, (c) `POST /api/forecast/:id/vote`, (d) seed 2-3 days for demo, (e) `/forecast` page with severity-tinted cards + vote buttons. | Pitch script says "see today's forecast" at 0:40. Currently a stub. 4h. |
+
+### Tier 2 — also pitched, lower urgency
+
+| # | Task | Why |
+| --- | --- | --- |
+| 4 | **Build `/submit` page** (`POST /api/submissions` + claude-opus-4-1 fact-check) | Pitch script step 11 references it. Was cut early; ship it if Tier 1 lands fast. 3h. |
+| 5 | **Toxicity moderation** on existing `/api/comments` (currently no `@anthropic-ai/sdk` call) — wire prompt from `.ai/05-ai-prompts.md` §3 | Already partially built (mock guard). Replace with real Claude call. 1h. |
+
+### Tier 3 — quality-of-life wins
+
+| # | Task | Why |
+| --- | --- | --- |
+| 6 | **Reddit-style nested comments** (extend from 1-level; schema already supports `parentCommentId`). Just UI work in `PostCard.tsx` + `actions/discussions.ts`. | Pitch script doesn't promise it, but reviewers will check. 2h. |
+| 7 | **All-time leaderboard tab** (currently daily only) | Easy tab toggle in `Leaderboard.tsx`. Endpoint already accepts `scope=`. 30min. |
+| 8 | **Server-side render of seeded `<Bell>`** (notifications table exists, no trigger). Add a per-user notification for every correct guess + every reply on your comments. Show in nav. | Demo differentiator on /profile. 1.5h. |
+| 9 | **Verification pass on ** `/claims`, `/leaderboard`, `/profile` empty states + skeletons (WeeklyReport + Discussions done) | Cheaper than it sounds, removes the most common judge complaint. 1h. |
+| 10 | **Mobile responsive pass** on the new Editorial Split layouts (Discussions + WeeklyReport) — they target desktop-first (`md:grid-cols-[1.5fr_1fr]`) | Verify sm: breakpoint stacks cleanly without overflow. 30min. |
+| 11 | **Demo account banner** on `/` and `/claims` for non-demo viewers. | Cosmetic but easy to add. 20min. |
+
+### Tier 4 — long-tail, cut first if needed
+
+| # | Task | Why (and why it's low) |
+| --- | --- | --- |
+| 12 | **SSE real-time** (`GET /api/sse/connect`, `EventSource` consumer) — falls back to polling | §7 cut-order: nice demo moment (open two tabs, see live update) but optional. 4h. |
+| 13 | **Resend email integration** + daily digest cron + `/settings` page | §7 cut-order: in-app notifications cover the demo. 3h. |
+| 14 | **AI narrative for SCAM FORECAST items** (`.ai/05-ai-prompts.md` §1) | Forecast items alone (without per-item AI narrative) still demo fine. 1h. |
+| 15 | **Badge ceremony polish** (full 8 badges, animated unlock toasts on first-trigger) | §7 cut-order: keep 4 of 8. 1h. |
+
+### Open questions to resolve before building
+
+These aren't blockers but should be settled before the corresponding task lands:
+
+- Where does the `/forecast` page link from? Currently a static landing section but no in-app route. Add to nav or keep landing-only?
+- For `submit` fact-check: do we persist the submission to a `submissions` table for review, or only show the verdict and discard?
+- Does the AI narrative cost get billed per-call or per-user-once? (For demo, per-user; for prod, cache by `(userId, weekStarting)`.)
+- For Resend: do we send from `hello@truthloop.app` (needs DNS) or Resend's `onboarding@resend.dev` for demo?
+
+---
+
+## 10. Decision log (changes made during the build)
+
+- **2026-08-13** — Added range filter to `/reports/weekly`. Server: `GET /api/reports/weekly` now range-aware (`kind=week|month|quarter|custom&from=...&to=...`), bucketed trend (daily ≤ 31 days, weekly beyond), per-report cache preserved for `kind=week` defaults. Client: `RangePicker` chip row + URL-synced custom modal. Regenerate button now hidden on non-week ranges. Plan: `/Users/sajjankarna/.claude/plans/eager-wiggling-panda.md`.
+- **2026-08-13** — Replaced hand-rolled bars on `/reports/weekly` with recharts (`AccuracyComparison` radial meters, `OutcomeDonut`, `CategoryBarChart` with blind-spot emphasis, `TrendArea` small-multiples). Plan + rec installed `recharts@3.10.1`.
+- **2026-08-13** — Editorial Split hero applied to `/discussions` + `/reports/weekly` using the `high-end-visual-design` skill.
+- **2026-08-13** — Refactored `/discussions` page layout: Editorial Split hero with live stats, sticky toolbar, animated category chips, featured `PostCard` variant for the top post.

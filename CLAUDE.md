@@ -28,6 +28,8 @@ Other project docs:
 - [`app/Design.md`](app/Design.md) — full Gumroad design system extraction (visual source of truth)
 - [`README.md`](README.md) — fullstack starter-kit boilerplate (React + Vite + Express)
 
+> **Build status** is tracked in [`.ai/06-roadmap.md` §0](.ai/06-roadmap.md) (Quick status table) and §9 (Next-up priority queue). Read both before starting new work to avoid duplicating or contradicting what's already shipped.
+
 ---
 
 ## Locked decisions (do not re-ask)

@@ -425,7 +425,7 @@ export function Discussions() {
                     handleVoteComment(commentId, v, detailQuery.data!.post.id)
                   }
                   onReply={(parentId, body) =>
-                    void handleCreateComment(detailQuery.data!.post.id, parentId, body)
+                    handleCreateComment(detailQuery.data!.post.id, parentId, body)
                   }
                   onEditComment={async (commentId: string, body: string) => {
                     await handleUpdateComment(
