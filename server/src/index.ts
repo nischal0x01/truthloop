@@ -19,16 +19,41 @@ import routes from '@/routes';
 const app = express();
 const PORT = config.port;
 
+// ── Trust Render's reverse proxy ──
+// Render terminates TLS at the load balancer and forwards HTTP to the app.
+// Without `trust proxy`, Express reports req.secure = false, which:
+//   - prevents `secure: true` cookies from being set on the response
+//   - breaks anything that reads req.protocol / req.hostname (redirects,
+//     rate limiters, OAuth state validation, etc.)
+app.set('trust proxy', 1);
+
+const IS_PROD = config.nodeEnv === 'production';
+
 // ── Session (required before passport) ──
+// In production the frontend (*.onrender.com) and backend (*.onrender.com)
+// live on different subdomains, so the session cookie must be:
+//   - scoped to .onrender.com so the browser sends it on requests to either
+//     subdomain (instead of pinning it to the backend host only)
+//   - marked Secure + SameSite=None so it rides along on cross-site
+//     fetch() calls from the frontend (Lax would block those)
 app.use(
   session({
     secret: process.env.SESSION_SECRET ?? 'dev-secret-change-in-production',
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
+    // Trust the first proxy hop's X-Forwarded-Proto. Without this,
+    // express-session uses `req.secure` from Express, which can evaluate
+    // to false on top-level cross-site navigations through
+    // Cloudflare → Render → app. Result: the Set-Cookie for a `Secure`
+    // cookie is silently dropped on 302 redirects (login, OAuth callback)
+    // even though the request is actually HTTPS. Force it to read the
+    // header directly.
+    proxy: true,
     cookie: {
-      secure: config.nodeEnv === 'production',
+      secure: IS_PROD,
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: IS_PROD ? 'none' : 'lax',
+      domain: IS_PROD ? '.onrender.com' : undefined,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
@@ -62,7 +87,12 @@ app.use(
 );
 app.use(
   cors({
-    origin: [process.env.CORS_ORIGIN || 'http://localhost:5173', 'http://localhost:5174'].filter(Boolean),
+    origin: [
+      process.env.CORS_ORIGIN,
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'https://unesco-hackathon-frontend.onrender.com',
+    ].filter(Boolean) as string[],
     credentials: true,
   })
 );
