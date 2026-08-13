@@ -25,7 +25,7 @@ import { Hero } from '@/components/landing/hero';
 import { WhyTruthLoop } from '@/components/landing/why-truthloop';
 import { LoopSteps } from '@/components/landing/loop-steps';
 import { BlindSpot } from '@/components/landing/blind-spot';
-import { Forecast } from '@/components/landing/forecast';
+import { Forecast as LandingForecast } from '@/components/landing/forecast';
 import { LeaderboardPreview } from '@/components/landing/leaderboard-preview';
 import { CTA } from '@/components/landing/cta';
 import { Footer } from '@/components/landing/footer';
@@ -38,6 +38,7 @@ import { Feed } from '@/pages/Feed';
 import { Leaderboard } from '@/pages/Leaderboard';
 import { Discussions } from '@/pages/Discussions';
 import { WeeklyReport } from '@/pages/WeeklyReport';
+import { Forecast } from '@/pages/Forecast';
 
 /* ── Landing (marketing) ── */
 
@@ -49,7 +50,7 @@ const Landing = () => (
       <WhyTruthLoop />
       <LoopSteps />
       <BlindSpot />
-      <Forecast />
+      <LandingForecast />
       <LeaderboardPreview />
       <CTA />
     </main>
@@ -182,6 +183,7 @@ const App = () => {
           <Route element={<ProtectedRoute />}>
             <Route path="/profile" element={<Profile />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/forecast" element={<Forecast />} />
             <Route path="/discussions" element={<Discussions />} />
             <Route path="/discussions/:id" element={<Discussions />} />
             <Route path="/reports/weekly" element={<WeeklyReport />} />

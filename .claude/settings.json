@@ -47,7 +47,9 @@
       "Bash(npx tsx -e ' *)",
       "Bash(shasum -a 256 drizzle/0002_glorious_thunderbolts.sql)",
       "Bash(git check-ignore *)",
-      "Bash(grep -n \"SUM\\(\\\\|COUNT\\(\\\\|sql\\\\`\" /Users/sajjankarna/hackathon/unesco-hackathon/server/src/routes/reports.ts)"
+      "Bash(grep -n \"SUM\\(\\\\|COUNT\\(\\\\|sql\\\\`\" /Users/sajjankarna/hackathon/unesco-hackathon/server/src/routes/reports.ts)",
+      "Bash(git commit -m 'fix: unblock prod — coach_notes migration + esm hoist + null coalesce' -m '- generate 0002 migration adding coach_notes jsonb to weekly_reports *)",
+      "Bash(node coerce-smoke.mjs)"
     ]
   }
 }
