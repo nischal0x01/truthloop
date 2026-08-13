@@ -39,6 +39,7 @@ import { Leaderboard } from '@/pages/Leaderboard';
 import { Discussions } from '@/pages/Discussions';
 import { WeeklyReport } from '@/pages/WeeklyReport';
 import { Forecast } from '@/pages/Forecast';
+import { Submit } from '@/pages/Submit';
 
 /* ── Landing (marketing) ── */
 
@@ -184,6 +185,7 @@ const App = () => {
             <Route path="/profile" element={<Profile />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/forecast" element={<Forecast />} />
+            <Route path="/submit" element={<Submit />} />
             <Route path="/discussions" element={<Discussions />} />
             <Route path="/discussions/:id" element={<Discussions />} />
             <Route path="/reports/weekly" element={<WeeklyReport />} />

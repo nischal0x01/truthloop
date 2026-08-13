@@ -31,8 +31,11 @@ export const categorySlug = z.enum([
 /** Severity bucket for `/forecast` items. */
 export const severityLevel = z.enum(['low', 'medium', 'high', 'critical']);
 
-/** Verdict — used by `submit`-tab fact-check and AI re-judgement flows. */
-export const verdictLevel = z.enum(['real', 'fake', 'mixed', 'unverified']);
+/** Verdict — used by `submit`-tab fact-check and AI re-judgement flows.
+ *  `mixed` is reserved for future use; the current spec (§2) only ships
+ *  `real` | `fake` | `unverifiable`. We expose `unverified` here as the
+ *  friendly alias and map it onto the DB enum (`ai_verdict`) at persist time. */
+export const verdictLevel = z.enum(['real', 'fake', 'unverified']);
 
 /* ── 1. Scam forecast (`.ai/05-ai-prompts.md` §1) ───────────────────── */
 
@@ -168,12 +171,12 @@ export const prescriptionFallback: Prescription = {
     "Pick one category this week and read two articles about how it gets made. Pattern recognition scales faster than rules.",
 };
 
-/* ── 5. Live fact-check (`.ai/05-ai-prompts.md` §5) ────────────────── */
+/* ── 5. Live fact-check (`.ai/05-ai-prompts.md` §2) ────────────────── */
 
 export const factCheckSchema = z.object({
   verdict: verdictLevel,
-  /** 0..1 — Claude's stated confidence. Surfaced verbatim to the user. */
-  confidence: z.number().min(0).max(1),
+  /** 0..100 — Claude's stated confidence (per spec, NOT 0..1). */
+  confidence: z.number().int().min(0).max(100),
   /** ≤2 sentences for the main verdict chip. */
   headline: z.string().min(10).max(180),
   /** Up to 4 supporting reasons, each a single sentence. */
@@ -188,5 +191,16 @@ export const factCheckSchema = z.object({
     )
     .max(3)
     .optional(),
+  /** One of the category slugs from `categorySlug`. */
+  category: categorySlug,
 });
 export type FactCheck = z.infer<typeof factCheckSchema>;
+
+/** Hard fallback when Claude is down or returns garbage. Spec §6. */
+export const factCheckFallback: FactCheck = {
+  verdict: 'unverified',
+  confidence: 0,
+  headline: 'AI check unavailable — try again in a moment.',
+  reasons: ['Our fact-check service did not respond. Your submission was saved and can be re-checked later.'],
+  category: 'unverified_claim',
+};

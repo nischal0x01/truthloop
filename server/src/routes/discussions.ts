@@ -30,8 +30,6 @@ function requireAuth(req: Request, _res: Response, next: NextFunction) {
   next();
 }
 
-const MAX_DEPTH = 5;
-
 /* ── Schemas ─────────────────────────────────────────────────────────── */
 
 const listQuerySchema = z.object({

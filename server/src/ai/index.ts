@@ -38,6 +38,7 @@ export {
   prescriptionFallback,
   // live fact-check
   factCheckSchema,
+  factCheckFallback,
 } from './schemas';
 
 export type {
@@ -68,3 +69,4 @@ export {
   normalizePrescription,
 } from './prompts/prescription';
 export { buildScamForecastPrompt } from './prompts/scam-forecast';
+export { buildLiveFactCheckPrompt } from './prompts/live-fact-check';

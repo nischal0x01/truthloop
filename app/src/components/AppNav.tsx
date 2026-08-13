@@ -95,6 +95,18 @@ export function AppNav({ showClaims = true }: AppNavProps) {
             ) : null}
           </Link>
           <Link
+            to="/submit"
+            className={[
+              'relative text-label font-medium transition-all',
+              location.pathname === '/submit' ? 'text-foreground font-semibold' : 'text-foreground/70 hover:text-foreground',
+            ].join(' ')}
+          >
+            Submit
+            {location.pathname === '/submit' ? (
+              <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-pink-accent" aria-hidden="true" />
+            ) : null}
+          </Link>
+          <Link
             to="/reports/weekly"
             className={[
               'relative text-label font-medium transition-all',

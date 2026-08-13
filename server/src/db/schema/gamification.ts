@@ -4,7 +4,6 @@
  * Badge triggers fire from the app layer (see `server/src/gamification/`).
  */
 import { pgTable, uuid, text, timestamp, primaryKey } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 import { users } from './users';
 import { rarityEnum } from './enums';
 

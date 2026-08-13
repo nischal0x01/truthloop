@@ -38,19 +38,15 @@ import {
 } from '@/ai/prompts/blind-spot-narrative';
 import {
   buildTrendCoachNotePrompt,
-  normalizeTrendCoachNote,
 } from '@/ai/prompts/trend-coach-note';
 import {
   buildBlindSpotContextPrompt,
-  normalizeBlindSpotContext,
 } from '@/ai/prompts/blind-spot-context';
 import {
   buildReplayCoachNotePrompt,
-  normalizeReplayCoachNote,
 } from '@/ai/prompts/replay-coach-note';
 import {
   buildPrescriptionPrompt,
-  normalizePrescription,
 } from '@/ai/prompts/prescription';
 import type { WeeklyCoachNotes } from '@/db/schema/reports';
 import { categoryLabel } from '@/lib/category-label';

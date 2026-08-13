@@ -8,7 +8,7 @@
  *  3. Aggregations / CTEs     → raw SQL escape hatch via `sql` template
  */
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { eq, sql, desc, and, gte } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
 
