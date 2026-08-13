@@ -667,6 +667,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
     }),
     schema: trendCoachNoteSchema,
     fallback: trendCoachNoteFallback,
+    coerce: 'string-field',
     maxTokens: 1024,
   });
 
@@ -682,6 +683,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
         }),
         schema: blindSpotContextSchema,
         fallback: blindSpotContextFallback,
+        coerce: 'string-field',
         maxTokens: 1024,
       })
     : Promise.resolve(blindSpotContextFallback);
@@ -697,6 +699,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
         }),
         schema: replayCoachNoteSchema,
         fallback: replayCoachNoteFallback,
+        coerce: 'string-field',
         maxTokens: 1024,
       })
     : Promise.resolve(replayCoachNoteFallback);
@@ -716,6 +719,7 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
     }),
     schema: prescriptionSchema,
     fallback: prescriptionFallback,
+    coerce: 'string-field',
     maxTokens: 1024,
   });
 

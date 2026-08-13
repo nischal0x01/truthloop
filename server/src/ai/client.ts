@@ -112,6 +112,16 @@ export interface GenerateStructuredOptions<T> extends GenerateTextOptions {
   schema: z.ZodType<T>;
   /** What to return when the model fails to produce parseable JSON. */
   fallback: T;
+  /**
+   * When 'string-field', on schema-validation failure we look for any
+   * single string-valued field in the parsed JSON and re-validate as
+   * `{ [field]: <that-string> }`. Useful for short-output prompts where
+   * the model frequently drifts the key name (e.g. `{"response": "..."}`
+   * instead of `{"note": "..."}`) but the value itself is what we want.
+   * Off by default — rich-shape schemas (forecast, fact-check) shouldn't
+   * silently swallow wrong-shape responses.
+   */
+  coerce?: 'string-field';
 }
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
@@ -133,6 +143,46 @@ function isRetryableStatus(status: number): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Best-effort coercion when the model returned a JSON object whose keys
+ * don't match the schema but whose *value* is plausibly what we wanted.
+ *
+ * Used by `generateStructured({ coerce: 'string-field' })` for short
+ * single-field prompts (coach notes, narrative). The model often drifts
+ * the key name (`{"response": "..."}`, `{"coach_note": "..."}`,
+ * `{"prescription": "..."}`) when it should be `{"note": "..."}`. This
+ * helper looks for the first plausible string-valued field and wraps it
+ * as `{ note: <value> }` so the Zod schema gets a second chance.
+ *
+ * Returns null when the input isn't an object, has no string field, or
+ * the string is too short to be a real sentence.
+ */
+function coerceSingleStringField(
+  json: unknown,
+  expectedKey = 'note',
+  minLength = 12
+): unknown | null {
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) {
+    return null;
+  }
+  const obj = json as Record<string, unknown>;
+
+  // Already has the expected key with a string — nothing to do.
+  const existing = obj[expectedKey];
+  if (typeof existing === 'string' && existing.trim().length >= minLength) {
+    return obj;
+  }
+
+  // Find the first string field of plausible length.
+  for (const value of Object.values(obj)) {
+    if (typeof value === 'string' && value.trim().length >= minLength) {
+      return { [expectedKey]: value.trim(), ...obj };
+    }
+  }
+
+  return null;
 }
 
 /** Strip ```json fences and extract the first JSON-looking block. */
@@ -319,6 +369,17 @@ export async function generateStructured<T>(
 
       const parsed = opts.schema.safeParse(json);
       if (!parsed.success) {
+        // Opt-in lenient coercion: rescue short single-string outputs that
+        // arrived under a wrong key (see coerceSingleStringField comment).
+        if (opts.coerce === 'string-field') {
+          const coerced = coerceSingleStringField(json);
+          if (coerced !== null) {
+            const coercedResult = opts.schema.safeParse(coerced);
+            if (coercedResult.success) {
+              return coercedResult.data;
+            }
+          }
+        }
         throw new AIServiceError(
           'AI response did not match expected schema.',
           { cause: 'parse', original: parsed.error }
