@@ -220,10 +220,26 @@ export async function generateText(opts: GenerateTextOptions): Promise<string> {
       // Extract first text block; bail if there is none.
       const block = res.content.find((b) => b.type === 'text');
       if (!block || block.type !== 'text' || !block.text.trim()) {
-        throw new AIServiceError('AI returned an empty response.', {
-          cause: 'upstream',
-          status: 502,
-        });
+        // Two failure shapes here:
+        //   1) Model returned no text block at all (truly empty/unconfigured).
+        //   2) Model hit `stop_reason: "max_tokens"` mid-thinking on a model
+        //      with extended thinking (e.g. MiniMax-M2 burns the budget on its
+        //      internal reasoning block and never emits a text block).
+        // In case (2) we want the caller to retry with a bigger `maxTokens`,
+        // not silently fall back to a generic string.
+        const hadThinkingOnly =
+          (res.content || []).some((b) => b.type === 'thinking') &&
+          res.stop_reason === 'max_tokens';
+        throw new AIServiceError(
+          hadThinkingOnly
+            ? 'AI exhausted max_tokens inside the thinking block; increase maxTokens.'
+            : 'AI returned an empty response.',
+          {
+            cause: 'upstream',
+            status: 502,
+            retryable: hadThinkingOnly,
+          }
+        );
       }
       return block.text.trim();
     } catch (err) {

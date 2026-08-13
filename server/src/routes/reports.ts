@@ -594,7 +594,12 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
       try {
         const rawText = await generateText({
           ...built,
-          maxTokens: 256,
+          // MiniMax-M2 spends the budget on its internal `thinking` block
+          // (extended-thinking style), which can eat a full 256-token cap
+          // and leave no room for the actual text answer — `stop_reason`
+          // comes back as `max_tokens` with zero text blocks. 1024 gives
+          // the model room to think and still emit the narrative.
+          maxTokens: 1024,
         });
         const normalized = normalizeBlindSpotNarrative(rawText);
         narrative = normalized.narrative;
