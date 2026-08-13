@@ -26,7 +26,7 @@
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { useCallback, useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageCircle } from 'lucide-react';
@@ -39,7 +39,6 @@ import { SortTabs } from '@/components/discussions/SortTabs';
 import { ToastContainer, type Toast } from '@/components/discussions/Toast';
 import { useAuth } from '@/contexts/auth-context';
 import {
-  discussionKeys,
   getDiscussionsQuery,
   getDiscussionByIdQuery,
   createDiscussionMutation,
@@ -65,7 +64,6 @@ export function Discussions() {
   const { user } = useAuth();
 
   const selectedPostId = postIdFromUrl ?? null;
-  const qc = useQueryClient();
 
   const showToast = useCallback((message: string, type: Toast['type'] = 'success') => {
     const id = Math.random().toString(36).slice(2);
@@ -98,85 +96,88 @@ export function Discussions() {
     enabled: !!selectedPostId,
   });
 
-  /* ── Mutations (factories from actions/discussions.ts) ── */
+  /* ── Mutations (factories from actions/discussions.ts) ──
+   *
+   * IMPORTANT: every action's `onSuccess` does direct setQueryData writes so
+   * the UI updates synchronously. The page must NOT override `onSuccess` —
+   * doing so would silently replace the cache update and the user would see
+   * stale data until the next refetch. Toasts and navigation live in the
+   * handlers below (after `mutateAsync`) so the action's onSuccess always
+   * runs untouched.
+   */
 
-  const voteMutation = useMutation({
-    ...voteDiscussionMutation(),
-    onSuccess: (result) => {
-      qc.setQueryData(discussionKeys.list(sort), (old: { posts: DiscussionPost[] } | undefined) => {
-        if (!old) return old;
-        return {
-          posts: old.posts.map((p) =>
-            p.id === result.id
-              ? { ...p, upvotes: result.upvotes, downvotes: result.downvotes, myVote: result.myVote }
-              : p
-          ),
-        };
-      });
-      if (selectedPostId === result.id) {
-        qc.setQueryData(discussionKeys.detail(selectedPostId), (old: { post: DiscussionPost; comments: unknown[] } | undefined) => {
-          if (!old) return old;
-          return {
-            ...old,
-            post: {
-              ...old.post,
-              upvotes: result.upvotes,
-              downvotes: result.downvotes,
-              myVote: result.myVote,
-            },
-          };
-        });
-      }
-    },
-  });
+  const voteMutation = useMutation(voteDiscussionMutation());
 
-  const createPostMutation = useMutation({
-    ...createDiscussionMutation(),
-    onSuccess: () => {
-      showToast('Discussion posted!');
-    },
-  });
+  const createPostMutation = useMutation(createDiscussionMutation());
 
-  const updatePostMutation = useMutation({
-    ...updateDiscussionMutation(),
-    onSuccess: () => {
-      showToast('Changes saved!');
-      navigate('/discussions', { replace: true });
-    },
-  });
+  const updatePostMutation = useMutation(updateDiscussionMutation());
 
-  const deletePostMutation = useMutation({
-    ...deleteDiscussionMutation(),
-    onSuccess: () => {
-      showToast('Discussion deleted');
-      navigate('/discussions', { replace: true });
-    },
-  });
+  const deletePostMutation = useMutation(deleteDiscussionMutation());
 
-  const createCommentMutation = useMutation({
-    ...createDiscussionCommentMutation(),
-    onSuccess: () => {
-      showToast('Comment posted!');
-    },
-  });
+  const createCommentMutation = useMutation(createDiscussionCommentMutation());
 
   const voteCommentMutation = useMutation(voteDiscussionCommentMutation());
 
-  const updateCommentMutation = useMutation({
-    ...updateDiscussionCommentMutation(),
-    onSuccess: () => {
-      showToast('Comment updated!');
-    },
-  });
+  const updateCommentMutation = useMutation(updateDiscussionCommentMutation());
 
-  const deleteCommentMutation = useMutation({
-    ...deleteDiscussionCommentMutation(),
-    onSuccess: () => {
-      showToast('Comment deleted');
-    },
-  });
+  const deleteCommentMutation = useMutation(deleteDiscussionCommentMutation());
 
-  /* ── Handlers ── */
+  /* ── Handlers ──
+   *
+   * Each handler calls `mutateAsync` so we can chain UX work (toast /
+   * navigate) AFTER the mutation's cache update has already been applied
+   * by the action's `onSuccess`. If we did `mutate(..., { onSuccess })`
+   * here, the action's onSuccess would still run, but having all UX work
+   * centralised in handlers keeps the page readable.
+   */
+
+  const handleCreatePost = useCallback(
+    async (title: string, body: string) => {
+      try {
+        await createPostMutation.mutateAsync({ title, body });
+        showToast('Discussion posted!');
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to post discussion.',
+          'error'
+        );
+      }
+    },
+    [createPostMutation, showToast]
+  );
+
+  const handleUpdatePost = useCallback(
+    async (postId: string, title: string, body: string) => {
+      try {
+        await updatePostMutation.mutateAsync({ postId, title, body });
+        showToast('Changes saved!');
+        navigate('/discussions', { replace: true });
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to save changes.',
+          'error'
+        );
+      }
+    },
+    [updatePostMutation, showToast, navigate]
+  );
+
+  const handleDeletePost = useCallback(
+    async (postId: string) => {
+      if (!window.confirm('Are you sure you want to delete this post?')) return;
+      try {
+        await deletePostMutation.mutateAsync(postId);
+        showToast('Discussion deleted');
+        navigate('/discussions', { replace: true });
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to delete discussion.',
+          'error'
+        );
+      }
+    },
+    [deletePostMutation, showToast, navigate]
+  );
 
   const handleVotePost = useCallback(
     (postId: string, vote: 1 | -1 | 0) => voteMutation.mutate({ postId, vote }),
@@ -191,9 +192,56 @@ export function Discussions() {
 
   const handleCreateComment = useCallback(
     async (discussionId: string, parentCommentId: string | null, body: string) => {
-      await createCommentMutation.mutateAsync({ discussionId, parentCommentId, body });
+      try {
+        await createCommentMutation.mutateAsync({
+          discussionId,
+          parentCommentId,
+          body,
+        });
+        showToast('Comment posted!');
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to post comment.',
+          'error'
+        );
+      }
     },
-    [createCommentMutation]
+    [createCommentMutation, showToast]
+  );
+
+  const handleUpdateComment = useCallback(
+    async (discussionId: string, commentId: string, body: string) => {
+      try {
+        await updateCommentMutation.mutateAsync({
+          discussionId,
+          commentId,
+          body,
+        });
+        showToast('Comment updated!');
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to update comment.',
+          'error'
+        );
+      }
+    },
+    [updateCommentMutation, showToast]
+  );
+
+  const handleDeleteComment = useCallback(
+    async (discussionId: string, commentId: string) => {
+      if (!window.confirm('Delete this comment?')) return;
+      try {
+        await deleteCommentMutation.mutateAsync({ discussionId, commentId });
+        showToast('Comment deleted');
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to delete comment.',
+          'error'
+        );
+      }
+    },
+    [deleteCommentMutation, showToast]
   );
 
   const handleEditPost = useCallback(
@@ -202,15 +250,6 @@ export function Discussions() {
       setEditOnMountId(post.id);
     },
     [navigate]
-  );
-
-  const handleDeletePost = useCallback(
-    (postId: string) => {
-      if (window.confirm('Are you sure you want to delete this post?')) {
-        deletePostMutation.mutate(postId);
-      }
-    },
-    [deletePostMutation]
   );
 
   const handleBack = useCallback(() => {
@@ -280,7 +319,7 @@ export function Discussions() {
               <CreatePostButton
                 open={openComposer}
                 onOpenChange={setOpenComposer}
-                onCreate={(t, b) => createPostMutation.mutate({ title: t, body: b })}
+                onCreate={(t, b) => void handleCreatePost(t, b)}
                 isPending={createPostMutation.isPending}
               />
             </motion.div>
@@ -369,7 +408,7 @@ export function Discussions() {
                             user?.id === post.authorId ? () => handleEditPost(post) : undefined
                           }
                           onDelete={
-                            user?.id === post.authorId ? () => handleDeletePost(post.id) : undefined
+                            user?.id === post.authorId ? () => void handleDeletePost(post.id) : undefined
                           }
                           canModify={user?.id === post.authorId}
                         />
@@ -399,25 +438,20 @@ export function Discussions() {
                     handleVoteComment(commentId, v, detailQuery.data!.post.id)
                   }
                   onReply={(parentId, body) =>
-                    handleCreateComment(detailQuery.data!.post.id, parentId, body)
+                    void handleCreateComment(detailQuery.data!.post.id, parentId, body)
                   }
                   onEditComment={async (commentId: string, body: string) => {
-                    await updateCommentMutation.mutateAsync({
-                      discussionId: detailQuery.data!.post.id,
+                    await handleUpdateComment(
+                      detailQuery.data!.post.id,
                       commentId,
-                      body,
-                    });
+                      body
+                    );
                   }}
                   onDeleteComment={(commentId) => {
-                    if (window.confirm('Delete this comment?')) {
-                      deleteCommentMutation.mutate({
-                        discussionId: detailQuery.data!.post.id,
-                        commentId,
-                      });
-                    }
+                    void handleDeleteComment(detailQuery.data!.post.id, commentId);
                   }}
                   onEditPost={async (postId: string, title: string, body: string) => {
-                    await updatePostMutation.mutateAsync({ postId, title, body });
+                    await handleUpdatePost(postId, title, body);
                   }}
                   isPostVoting={
                     voteMutation.isPending &&

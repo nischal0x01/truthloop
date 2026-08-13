@@ -36,3 +36,4 @@ coverage/
 
 # Husky
 .husky/_
+.playwright-mcp/

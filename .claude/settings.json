@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(md5 /Users/sajjankarna/hackathon/unesco-hackathon/server/src/index.ts)",
+      "Bash(curl -s -I https://unesco-hackathon.onrender.com/)",
+      "Bash(curl -sI https://unesco-hackathon.onrender.com/api/auth/google)",
+      "Bash(curl -sI https://unesco-hackathon.onrender.com/api/auth/me)",
+      "Bash(curl -sv https://unesco-hackathon.onrender.com/api/auth/google)",
+      "Bash(curl -s -c /tmp/cookies.txt -I https://unesco-hackathon.onrender.com/api/auth/google)",
+      "Bash(curl -s -b /tmp/cookies.txt -I https://unesco-hackathon.onrender.com/api/auth/me)",
+      "Bash(node -e ' *)",
+      "Bash(npm ls *)",
+      "Bash(node /tmp/oauth-trace.js)",
+      "Bash(pkill -f \"remote-debugging-port=9222\")",
+      "Bash(DB_HOST=ifip-ifip.g.aivencloud.com DB_PORT=20743 DB_USER=avnadmin DB_PASSWORD=AVNS_h95vp_NNtxk5di3XIOD DB_NAME=unesco-hackathon npm run seed:prod)",
+      "Bash(echo \"---exit: $?\")",
+      "Bash(DB_HOST=ifip-ifip.g.aivencloud.com DB_PORT=20743 DB_USER=avnadmin DB_PASSWORD=AVNS_h95vp_NNtxk5di3XIOD DB_NAME=unesco-hackathon npm run seed:prod:dry)",
+      "Bash(DB_HOST=ifip-ifip.g.aivencloud.com DB_PORT=20743 DB_USER=avnadmin DB_PASSWORD=AVNS_h95vp_NNtxk5di3XIOD DB_NAME=unesco-hackathon npm run seed:prod:yes)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'fix\\(app\\): resolve React error #300 on logout by reordering hooks in ClaimsRoute *)",
+      "Bash(curl -sS -o /dev/null -w \"frontend HTTP %{http_code}\\\\n\" https://truthloop.sajjan.dev/)",
+      "Bash(curl -sS -o /dev/null -w \"backend HTTP %{http_code}\\\\n\" https://truthloop-api.sajjan.dev/)",
+      "Bash(curl -sS https://truthloop-api.sajjan.dev/)",
+      "Bash(npx vite *)",
+      "Bash(git commit -m 'refactor\\(app\\): split data layer into actions/ factories + reusable fetcher *)"
+    ]
+  }
+}

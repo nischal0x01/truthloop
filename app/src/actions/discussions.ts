@@ -4,6 +4,21 @@
  * Mirrors server schema:
  *   discussions table        → DiscussionPost
  *   discussion_comments table → DiscussionComment
+ *
+ * Cache strategy:
+ *   Every mutation's `onSuccess` directly writes to the relevant query cache
+ *   via `setQueryData` (synchronous, instant UI update). We do NOT rely on
+ *   `invalidateQueries` alone — invalidation marks queries stale and triggers
+ *   an async refetch, which leaves a 100–300ms window where the UI shows
+ *   stale data and the user wonders if their action worked.
+ *
+ *   Each `onSuccess` writes to:
+ *     1. The affected `detail` cache (always).
+ *     2. The `list` cache for every sort variant — so flipping Hot/New/Top
+ *        after a vote shows the updated tally without a refetch round-trip.
+ *
+ *   Pages can still layer their own `onSuccess` on top (e.g. toasts,
+ *   navigation) — `useMutation` runs every onSuccess in the chain.
  */
 
 import { api } from '@/lib/api';
@@ -70,6 +85,43 @@ export const invalidateAllDiscussionQueries = () => {
   queryClient.invalidateQueries({ queryKey: discussionKeys.all });
 };
 
+/* ── Cache helpers (mutate every sort variant of the list) ── */
+
+/** Run `updater` against the list cache for every sort variant. */
+function updateAllListCaches(
+  updater: (old: DiscussionListResponse) => DiscussionListResponse
+) {
+  for (const sort of ['hot', 'new', 'top'] as const) {
+    queryClient.setQueryData<DiscussionListResponse>(
+      discussionKeys.list(sort),
+      (old) => (old ? updater(old) : old)
+    );
+  }
+}
+
+/** Run `updater` against the detail cache for `id`. */
+function updateDetailCache(
+  id: string,
+  updater: (old: DiscussionDetailResponse) => DiscussionDetailResponse
+) {
+  queryClient.setQueryData<DiscussionDetailResponse>(
+    discussionKeys.detail(id),
+    (old) => (old ? updater(old) : old)
+  );
+}
+
+/** Apply a post-level patch to both the list cache (all sorts) and the
+ *  detail cache for that post. */
+function patchPost(
+  postId: string,
+  patch: (p: DiscussionPost) => DiscussionPost
+) {
+  updateAllListCaches((old) => ({
+    posts: old.posts.map((p) => (p.id === postId ? patch(p) : p)),
+  }));
+  updateDetailCache(postId, (old) => ({ ...old, post: patch(old.post) }));
+}
+
 /* ── Queries ── */
 
 export const getDiscussionsQuery = (sort: SortOrder = 'hot') => ({
@@ -103,8 +155,18 @@ export const createDiscussionMutation = () => ({
     });
     return post;
   },
-  onSuccess: () => {
-    invalidateAllDiscussionQueries();
+  onSuccess: (post) => {
+    // Prepend to every sort's list cache so the new post shows up
+    // immediately in whichever tab the user is on. The server's sort
+    // algorithm will eventually reorder, but for the first few seconds the
+    // user sees their own post — that's the only "real-time" signal that
+    // matters for a UX-driven vote.
+    updateAllListCaches((old) => ({ posts: [post, ...old.posts] }));
+    // Also seed a detail cache so navigating to /discussions/:id is instant.
+    queryClient.setQueryData<DiscussionDetailResponse>(
+      discussionKeys.detail(post.id),
+      { post, comments: [] }
+    );
   },
 });
 
@@ -126,17 +188,24 @@ export const updateDiscussionMutation = () => ({
     );
     return post;
   },
-  onSuccess: () => {
-    invalidateAllDiscussionQueries();
+  onSuccess: (post) => {
+    patchPost(post.id, () => post);
   },
 });
 
 export const deleteDiscussionMutation = () => ({
-  mutationFn: async (postId: string): Promise<void> => {
+  mutationFn: async (postId: string): Promise<{ id: string }> => {
     await api<void>(`/api/discussions/${postId}`, { method: 'DELETE' });
+    return { id: postId };
   },
-  onSuccess: () => {
-    invalidateAllDiscussionQueries();
+  onSuccess: ({ id }) => {
+    // Remove from every list cache so the post vanishes immediately.
+    updateAllListCaches((old) => ({
+      posts: old.posts.filter((p) => p.id !== id),
+    }));
+    // Drop the detail cache so navigating back to /discussions/:id refetches
+    // and the server-side `isDeleted` flag wins.
+    queryClient.removeQueries({ queryKey: discussionKeys.detail(id) });
   },
 });
 
@@ -161,6 +230,14 @@ export const voteDiscussionMutation = () => ({
     });
     return post;
   },
+  onSuccess: (result) => {
+    patchPost(result.id, (p) => ({
+      ...p,
+      upvotes: result.upvotes,
+      downvotes: result.downvotes,
+      myVote: result.myVote,
+    }));
+  },
 });
 
 /* ── Comment mutations ── */
@@ -180,8 +257,18 @@ export const createDiscussionCommentMutation = () => ({
     );
     return comment;
   },
-  onSuccess: () => {
-    invalidateAllDiscussionQueries();
+  onSuccess: (comment, vars) => {
+    // Append to detail cache so the new comment shows immediately.
+    updateDetailCache(vars.discussionId, (old) => ({
+      ...old,
+      comments: [...old.comments, comment],
+      post: { ...old.post, commentCount: old.post.commentCount + 1 },
+    }));
+    // Bump commentCount in the list cache for every sort.
+    patchPost(vars.discussionId, (p) => ({
+      ...p,
+      commentCount: p.commentCount + 1,
+    }));
   },
 });
 
@@ -201,10 +288,13 @@ export const updateDiscussionCommentMutation = () => ({
     );
     return comment;
   },
-  onSuccess: (_data: DiscussionComment, vars: { discussionId: string }) => {
-    queryClient.invalidateQueries({
-      queryKey: discussionKeys.detail(vars.discussionId),
-    });
+  onSuccess: (comment, vars) => {
+    updateDetailCache(vars.discussionId, (old) => ({
+      ...old,
+      comments: old.comments.map((c) =>
+        c.id === comment.id ? { ...c, body: comment.body } : c
+      ),
+    }));
   },
 });
 
@@ -215,17 +305,28 @@ export const deleteDiscussionCommentMutation = () => ({
   }: {
     discussionId: string;
     commentId: string;
-  }): Promise<void> => {
+  }): Promise<{ discussionId: string; commentId: string }> => {
     await api<void>(
       `/api/discussions/${discussionId}/comments/${commentId}`,
       { method: 'DELETE' }
     );
+    return { discussionId, commentId };
   },
-  onSuccess: (_data: void, vars: { discussionId: string }) => {
-    queryClient.invalidateQueries({
-      queryKey: discussionKeys.detail(vars.discussionId),
-    });
-    invalidateAllDiscussionQueries();
+  onSuccess: ({ discussionId, commentId }) => {
+    updateDetailCache(discussionId, (old) => ({
+      ...old,
+      comments: old.comments.map((c) =>
+        c.id === commentId ? { ...c, isDeleted: true, body: '[deleted]' } : c
+      ),
+      post: {
+        ...old.post,
+        commentCount: Math.max(0, old.post.commentCount - 1),
+      },
+    }));
+    patchPost(discussionId, (p) => ({
+      ...p,
+      commentCount: Math.max(0, p.commentCount - 1),
+    }));
   },
 });
 
@@ -252,10 +353,20 @@ export const voteDiscussionCommentMutation = () => ({
     });
     return comment;
   },
-  onSuccess: (_data, vars) => {
-    queryClient.invalidateQueries({
-      queryKey: discussionKeys.detail(vars.discussionId),
-    });
+  onSuccess: (result, vars) => {
+    updateDetailCache(vars.discussionId, (old) => ({
+      ...old,
+      comments: old.comments.map((c) =>
+        c.id === result.id
+          ? {
+              ...c,
+              upvotes: result.upvotes,
+              downvotes: result.downvotes,
+              myVote: result.myVote,
+            }
+          : c
+      ),
+    }));
   },
 });
 
