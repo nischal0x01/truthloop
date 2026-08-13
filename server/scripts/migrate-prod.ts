@@ -13,14 +13,15 @@
  *   4. Prints post-flight state to confirm exactly what changed
  *
  * Usage:
- *   # from /server — uses Aiven creds from env vars you set inline:
- *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASSWORD=... DB_NAME=... npm run migrate:prod
- *
- *   # Or with the Aiven creds from your local .env (after uncommenting them)
+ *   # Default — picks up Aiven creds from server/.env.prod (gitignored).
+ *   # Fill in DB_HOST / DB_USER / DB_PASSWORD / DB_NAME there once, then:
  *   npm run migrate:prod
  *
+ *   # Still works inline if you prefer (overrides anything in .env.prod):
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASSWORD=... DB_NAME=... npm run migrate:prod
+ *
  *   # If Aiven is in a broken state (leftover tables from failed prior attempts):
- *   npm run migrate:prod -- --reset
+ *   npm run migrate:prod -- --reset --yes
  *
  *   # See what would happen without applying:
  *   npm run migrate:prod -- --dry-run
@@ -36,6 +37,17 @@
  */
 
 import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
+// Override dev defaults in `server/.env` with the Aiven creds stored in
+// `server/.env.prod` (gitignored). If the file is missing, this no-ops and
+// the script keeps using whatever's in `server/.env` or shell env vars.
+//
+// IMPORTANT: must run BEFORE the dynamic `import('../src/config')` inside
+// main() — `src/config.ts` reads `process.env` at module-load time, and
+// ESM hoists top-level `import` statements above top-level code. So a
+// static `import { config } from '../src/config'` would capture the OLD
+// process.env (from `server/.env`) and ignore the override below.
+loadDotenv({ path: '.env.prod', override: true });
 
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -47,7 +59,6 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import { config } from '../src/config';
 import { logger } from '../src/utils/logger';
 
 type Args = { reset: boolean; dryRun: boolean; yes: boolean };
@@ -111,6 +122,10 @@ async function resetDb(pool: Pool): Promise<void> {
 /* ── Main ─────────────────────────────────────────────────────────────── */
 
 async function main(): Promise<void> {
+  // Dynamic import so `src/config.ts` reads `process.env` AFTER the
+  // `.env.prod` override above. See comment next to the loadDotenv() call.
+  const { config } = await import('../src/config');
+
   const args = parseArgs(process.argv.slice(2));
 
   console.log('── Target ──');

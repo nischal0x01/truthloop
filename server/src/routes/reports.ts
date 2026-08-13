@@ -282,10 +282,14 @@ async function userTotalsFor(
   fromIso: string,
   toIso: string
 ): Promise<UserTotalsRow> {
+  // COALESCE: SUM over an empty set returns NULL in SQL, which then becomes
+  // null in JS and fails the NOT NULL constraint on weekly_reports.correct_guesses
+  // when this user has zero guesses in the window. Without the wrap, the INSERT
+  // in `/weekly/regenerate` 500s on the very first regen for a brand-new user.
   const rows = await db.execute<UserTotalsRow>(sql`
     SELECT
       COUNT(*)::int AS total,
-      SUM(CASE WHEN ${schema.guesses.isCorrect} THEN 1 ELSE 0 END)::int AS correct
+      COALESCE(SUM(CASE WHEN ${schema.guesses.isCorrect} THEN 1 ELSE 0 END), 0)::int AS correct
     FROM ${schema.guesses}
     WHERE ${schema.guesses.userId} = ${userId}
       AND ${schema.guesses.createdAt} >= ${fromIso}

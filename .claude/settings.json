@@ -42,7 +42,12 @@
       "Bash(curl -sS \"http://localhost:5173/reports/weekly\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/health)",
       "Bash(curl -s -c /tmp/cookies.txt -X POST http://localhost:3000/api/auth/signin -H 'Content-Type: application/json' -d '{\"email\":\"demo@truthloop.app\",\"password\":\"demo\"}')",
-      "Bash(curl -s -b /tmp/cookies.txt -X POST http://localhost:3000/api/reports/weekly/regenerate -H 'Content-Type: application/json' -d '{}')"
+      "Bash(curl -s -b /tmp/cookies.txt -X POST http://localhost:3000/api/reports/weekly/regenerate -H 'Content-Type: application/json' -d '{}')",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(shasum -a 256 drizzle/0002_glorious_thunderbolts.sql)",
+      "Bash(git check-ignore *)",
+      "Bash(grep -n \"SUM\\(\\\\|COUNT\\(\\\\|sql\\\\`\" /Users/sajjankarna/hackathon/unesco-hackathon/server/src/routes/reports.ts)"
     ]
   }
 }

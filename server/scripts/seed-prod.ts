@@ -24,11 +24,11 @@
  *
  * Usage:
  *
- *   # Default — uses env vars (DB_HOST etc.) from your shell or .env.
- *   # Refuses to run unless --yes is passed AND host is not loopback.
- *   npm run seed:prod
+ *   # Default — picks up Aiven creds from server/.env.prod (gitignored).
+ *   # Fill in DB_HOST / DB_USER / DB_PASSWORD / DB_NAME there once, then:
+ *   npm run seed:prod -- --yes
  *
- *   # With Aiven creds inline:
+ *   # Still works inline if you prefer (overrides anything in .env.prod):
  *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASSWORD=... DB_NAME=... npm run seed:prod -- --yes
  *
  *   # Preview what would be inserted without writing anything:
@@ -45,11 +45,21 @@
  */
 
 import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
+// Override dev defaults in `server/.env` with the Aiven creds stored in
+// `server/.env.prod` (gitignored). If the file is missing, this no-ops and
+// the script keeps using whatever's in `server/.env` or shell env vars.
+//
+// IMPORTANT: must run BEFORE the dynamic `import('../src/config')` inside
+// main() — `src/config.ts` reads `process.env` at module-load time, and
+// ESM hoists top-level `import` statements above top-level code. So a
+// static `import { config } from '../src/config'` would capture the OLD
+// process.env (from `server/.env`) and ignore the override below.
+loadDotenv({ path: '.env.prod', override: true });
 
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 
-import { config } from '../src/config';
 import { runSeed, type SeedSummary } from '../src/db/seed';
 import * as schema from '../src/db/schema';
 
@@ -116,6 +126,10 @@ function formatSummary(s: SeedSummary): void {
 }
 
 async function main(): Promise<void> {
+  // Dynamic import so `src/config.ts` reads `process.env` AFTER the
+  // `.env.prod` override above. See comment next to the loadDotenv() call.
+  const { config } = await import('../src/config');
+
   const args = parseArgs(process.argv.slice(2));
 
   console.log('── Target ──');
