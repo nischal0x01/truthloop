@@ -39,7 +39,8 @@ import {
   OutcomeDonut,
   TrendArea,
 } from '@/components/reports/ReportCharts';
-import { RangePicker, rangeFromParams } from '@/components/reports/RangePicker';
+import { RangePicker } from '@/components/reports/RangePicker';
+import { rangeFromParams } from '@/actions/reports';
 import {
   categoryLabel,
   getWeeklyRangeQuery,

@@ -32,7 +32,14 @@
       "Bash(curl -s -o /dev/null -w \"5174 status: %{http_code}\\\\n\" http://localhost:5174/reports/weekly)",
       "Bash(curl -s 'http://localhost:5173/src/App.tsx')",
       "Bash(node -e \"console.log\\(require\\('recharts/package.json'\\).version\\)\")",
-      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/reports/weekly)"
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/reports/weekly)",
+      "Bash(curl -sS -o /dev/null -w \"GET /reports/weekly → %{http_code}\\\\n\" http://localhost:5173/reports/weekly)",
+      "Bash(curl -sS -o /dev/null -w \"GET /reports/weekly?range=month → %{http_code}\\\\n\" \"http://localhost:5173/reports/weekly?range=month\")",
+      "Bash(curl -sS -o /dev/null -w \"GET /reports/weekly?range=quarter → %{http_code}\\\\n\" \"http://localhost:5173/reports/weekly?range=quarter\")",
+      "Bash(curl -sS -o /dev/null -w \"GET /api/reports/weekly?kind=week → %{http_code}\\\\n\" -b \"connect.sid=test\" \"http://localhost:3000/api/reports/weekly?kind=week\")",
+      "Bash(curl -sS -o /dev/null -w \"GET /api/reports/weekly?kind=month → %{http_code}\\\\n\" -b \"connect.sid=test\" \"http://localhost:3000/api/reports/weekly?kind=month\")",
+      "Bash(curl -sS -o /dev/null -w \"GET /api/reports/weekly?kind=quarter → %{http_code}\\\\n\" -b \"connect.sid=test\" \"http://localhost:3000/api/reports/weekly?kind=quarter\")",
+      "Bash(curl -sS \"http://localhost:5173/reports/weekly\")"
     ]
   }
 }

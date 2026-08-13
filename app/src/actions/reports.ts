@@ -29,6 +29,41 @@ export interface ResolvedRange {
 
 export const DEFAULT_RANGE: Range = { kind: 'week' };
 
+/* ── Range ↔ URL helpers ───────────────────────────────────────── */
+
+/** Pull a valid `Range` from the URL search params, otherwise return DEFAULT_RANGE. */
+export function rangeFromParams(params: URLSearchParams): Range {
+  const raw = params.get('range');
+  if (raw === 'month' || raw === 'quarter' || raw === 'custom') {
+    const range: Range = { kind: raw };
+    if (raw === 'custom') {
+      const from = params.get('from');
+      const to = params.get('to');
+      if (from && to) {
+        range.from = from;
+        range.to = to;
+      } else {
+        return DEFAULT_RANGE;
+      }
+    }
+    return range;
+  }
+  return DEFAULT_RANGE;
+}
+
+/** Encode a `Range` back into URL search params (only writes non-default). */
+export function rangeToParams(range: Range): URLSearchParams {
+  const params = new URLSearchParams();
+  if (range.kind !== 'week') {
+    params.set('range', range.kind);
+  }
+  if (range.kind === 'custom') {
+    if (range.from) params.set('from', range.from);
+    if (range.to) params.set('to', range.to);
+  }
+  return params;
+}
+
 /* ── Types ──────────────────────────────────────────── */
 
 export interface WeeklyReportReplay {
