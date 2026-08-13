@@ -29,12 +29,20 @@ app.set('trust proxy', 1);
 
 const IS_PROD = config.nodeEnv === 'production';
 
+// COOKIE_DOMAIN scopes the session cookie to a shared parent domain so the
+// frontend and backend (different subdomains) can share it. Required in prod:
+//   - Default Render subdomains (*.onrender.com) are on the Public Suffix
+//     List and Chrome rejects cookies scoped to them. We use custom domains
+//     under saijan.dev instead.
+//   - In dev we leave it undefined so cookies stay host-only to localhost.
+const COOKIE_DOMAIN = IS_PROD ? process.env.COOKIE_DOMAIN ?? '.sajjan.dev' : undefined;
+
 // ── Session (required before passport) ──
-// In production the frontend (*.onrender.com) and backend (*.onrender.com)
-// live on different subdomains, so the session cookie must be:
-//   - scoped to .onrender.com so the browser sends it on requests to either
+// In production the frontend and backend live on different subdomains
+// (truthloop.sajjan.dev / truthloop-api.sajjan.dev), so the session cookie:
+//   - is scoped to .sajjan.dev so the browser sends it on requests to either
 //     subdomain (instead of pinning it to the backend host only)
-//   - marked Secure + SameSite=None so it rides along on cross-site
+//   - is marked Secure + SameSite=None so it rides along on cross-site
 //     fetch() calls from the frontend (Lax would block those)
 app.use(
   session({
@@ -53,7 +61,7 @@ app.use(
       secure: IS_PROD,
       httpOnly: true,
       sameSite: IS_PROD ? 'none' : 'lax',
-      domain: IS_PROD ? '.onrender.com' : undefined,
+      domain: COOKIE_DOMAIN,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
@@ -91,6 +99,7 @@ app.use(
       process.env.CORS_ORIGIN,
       'http://localhost:5173',
       'http://localhost:5174',
+      'https://truthloop.sajjan.dev',
       'https://unesco-hackathon-frontend.onrender.com',
     ].filter(Boolean) as string[],
     credentials: true,
