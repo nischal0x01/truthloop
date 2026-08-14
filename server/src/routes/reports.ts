@@ -50,6 +50,7 @@ import {
 } from '@/ai/prompts/prescription';
 import type { WeeklyCoachNotes } from '@/db/schema/reports';
 import { categoryLabel } from '@/lib/category-label';
+import { sendWeeklyReportEmail } from '@/email/send';
 
 const router = Router();
 
@@ -818,6 +819,53 @@ router.post('/weekly/regenerate', requireAuth, async (req, res) => {
     correctGuesses,
     blindSpotCategory,
     coachNotes,
+  });
+});
+
+/* ── POST /api/reports/weekly/email ────────────────────────────────── */
+/*
+ * Live demo button endpoint — emails the user's most-recent weekly
+ * blind-spot report. Always week-only (we email what's cached; if no
+ * row exists yet, returns 404 with a hint to regenerate first).
+ *
+ * Response shape mirrors `SendOutcome` from server/src/email/send.ts
+ * but with the recipient email exposed so the toast can confirm where
+ * the report went.
+ */
+
+router.post('/weekly/email', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+
+  // Look up the recipient email so the response can echo it for the toast.
+  const [user] = await db
+    .select({ email: schema.users.email })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  if (!user) throw new AppError(404, 'User not found.');
+
+  const outcome = await sendWeeklyReportEmail(userId);
+
+  if (!outcome.ok) {
+    if (outcome.reason === 'no-report' || outcome.reason === 'no-votes') {
+      throw new AppError(
+        404,
+        'No weekly report yet — vote on a few claims first, or regenerate from the dashboard.'
+      );
+    }
+    if (outcome.reason === 'email-bounced') {
+      throw new AppError(403, 'Your email was previously marked as bounced.');
+    }
+    if (outcome.reason === 'user-not-found') {
+      throw new AppError(404, 'User not found.');
+    }
+    throw new AppError(500, 'Could not send the email — try again in a moment.');
+  }
+
+  res.json({
+    sent: true,
+    email: user.email,
+    dryRun: outcome.dryRun,
   });
 });
 

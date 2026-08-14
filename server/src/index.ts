@@ -15,6 +15,7 @@ import { morganMiddleware } from '@/middleware/logger';
 import { errorHandler, notFoundHandler } from '@/middleware/errorHandler';
 import { connectDb } from '@/utils/db';
 import routes from '@/routes';
+import { startJobs } from '@/jobs/registerJobs';
 
 const app = express();
 const PORT = config.port;
@@ -144,6 +145,11 @@ app.listen(PORT, async () => {
   // Eagerly verify the DB pool can reach Postgres — log on boot instead of
   // waiting for the first request to surface a connection error.
   await connectDb();
+
+  // Register cron jobs (digest + weekly-report). No-op when CRON_ENABLED=false
+  // or already registered. Logs each job's schedule at boot so the operator
+  // can confirm they're armed.
+  startJobs();
 });
 
 // Graceful shutdown

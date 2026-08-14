@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut, Settings as SettingsIcon, User as UserIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { UserAvatar } from '@/components/auth/UserAvatar';
 import { MobileMenuDrawer } from '@/components/ui/MobileMenuDrawer';
@@ -116,6 +116,19 @@ export function AppNav({ showClaims = true }: AppNavProps) {
           >
             Reports
             {location.pathname === '/reports/weekly' ? (
+              <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-pink-accent" aria-hidden="true" />
+            ) : null}
+          </Link>
+          <Link
+            to="/settings"
+            className={[
+              'relative inline-flex items-center gap-1.5 text-label font-medium transition-all',
+              location.pathname === '/settings' ? 'text-foreground font-semibold' : 'text-foreground/70 hover:text-foreground',
+            ].join(' ')}
+          >
+            <SettingsIcon size={13} aria-hidden="true" />
+            Settings
+            {location.pathname === '/settings' ? (
               <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-pink-accent" aria-hidden="true" />
             ) : null}
           </Link>
@@ -246,6 +259,13 @@ export function AppNav({ showClaims = true }: AppNavProps) {
                   onClick={close}
                 >
                   Reports
+                </NavDrawerLink>
+                <NavDrawerLink
+                  to="/settings"
+                  active={location.pathname === '/settings'}
+                  onClick={close}
+                >
+                  Settings
                 </NavDrawerLink>
 
                 {user && (

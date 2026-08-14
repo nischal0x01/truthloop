@@ -38,6 +38,8 @@ import {
 } from '@/ai';
 import type { ForecastList } from '@/ai';
 import { searchWeb, type SearchResult } from '@/ai/search';
+import { sendInstantAlertsForHighSeverityItems } from '@/email/send';
+import { logger } from '@/utils/logger';
 
 /* ── Setup ──────────────────────────────────────────────────────────── */
 
@@ -354,6 +356,14 @@ async function generateAndPersistForecast(date: string): Promise<ForecastOut> {
       }))
     );
   }
+
+  // Fire-and-forget: email every user with `email_instant_alerts_enabled`
+  // for each HIGH-severity item we just inserted. We don't `await` this
+  // so a slow Resend call (or a dry-run log line) can't delay the
+  // `/forecast/today` response. Errors are swallowed inside the helper.
+  void sendInstantAlertsForHighSeverityItems(date).catch((err: unknown) => {
+    logger.warn({ err, date }, '[forecast] instant-alert batch failed');
+  });
 
   return (await fetchForecastForDate(date, null))!;
 }

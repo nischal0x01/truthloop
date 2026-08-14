@@ -40,6 +40,7 @@ import { Discussions } from '@/pages/Discussions';
 import { WeeklyReport } from '@/pages/WeeklyReport';
 import { Forecast } from '@/pages/Forecast';
 import { Submit } from '@/pages/Submit';
+import { Settings } from '@/pages/Settings';
 
 /* ── Landing (marketing) ── */
 
@@ -189,6 +190,7 @@ const App = () => {
             <Route path="/discussions" element={<Discussions />} />
             <Route path="/discussions/:id" element={<Discussions />} />
             <Route path="/reports/weekly" element={<WeeklyReport />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
 
           {/* Legacy aliases */}

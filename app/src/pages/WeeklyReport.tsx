@@ -27,6 +27,7 @@ import {
   Eye,
   FileBarChart,
   Loader2,
+  Mail,
   RefreshCw,
   Sparkles,
   Target,
@@ -53,6 +54,8 @@ import {
   type Range,
   type WeeklyReport as WeeklyReportData,
 } from '@/actions/reports';
+import { sendWeeklyReportEmailMutation } from '@/actions/settings';
+import { useAuth } from '@/contexts/auth-context';
 import { EASE } from '@/lib/motion';
 
 const CATEGORY_TONE: Record<
@@ -86,7 +89,9 @@ const SECTIONS = [
 
 export function WeeklyReport() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [regenToast, setRegenToast] = useState<string | null>(null);
+  const [emailToast, setEmailToast] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
 
   // Range state, synced to URL search params.
@@ -109,11 +114,32 @@ export function WeeklyReport() {
     },
   });
 
+  const emailMutation = useMutation({
+    ...sendWeeklyReportEmailMutation(),
+    onSuccess: (res) => {
+      const target = res.email || user?.email || 'your inbox';
+      setEmailToast(
+        res.dryRun
+          ? `Email queued (dry-run) → ${target}`
+          : `Report sent to ${target}`
+      );
+      setTimeout(() => setEmailToast(null), 4000);
+    },
+    onError: () => {
+      setEmailToast("Couldn't send — try again.");
+      setTimeout(() => setEmailToast(null), 4000);
+    },
+  });
+
   const report = reportQuery.data?.report ?? null;
 
   const handleRegenerate = useCallback(() => {
     regenMutation.mutate();
   }, [regenMutation]);
+
+  const handleEmail = useCallback(() => {
+    emailMutation.mutate();
+  }, [emailMutation]);
 
   const rangeLabel = useMemo(() => {
     if (reportQuery.data?.range) {
@@ -198,6 +224,8 @@ export function WeeklyReport() {
                 <FooterActions
                   isRegenerating={regenMutation.isPending}
                   onRegenerate={handleRegenerate}
+                  isSendingEmail={emailMutation.isPending}
+                  onEmail={handleEmail}
                 />
               )}
             </motion.div>
@@ -205,7 +233,7 @@ export function WeeklyReport() {
         </div>
       </main>
 
-      {/* Toast */}
+      {/* Toast (regenerate) */}
       <AnimatePresence>
         {regenToast && (
           <motion.div
@@ -216,6 +244,22 @@ export function WeeklyReport() {
           >
             <Sparkles size={14} aria-hidden="true" />
             {regenToast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast (email send) */}
+      <AnimatePresence>
+        {emailToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg border-2 border-black bg-dark-panel px-4 py-3 text-label font-semibold text-white shadow-hard"
+            role="status"
+          >
+            <Mail size={14} aria-hidden="true" />
+            {emailToast}
           </motion.div>
         )}
       </AnimatePresence>
@@ -889,10 +933,15 @@ function SectionHeader({
 function FooterActions({
   isRegenerating,
   onRegenerate,
+  isSendingEmail,
+  onEmail,
 }: {
   isRegenerating: boolean;
   onRegenerate: () => void;
+  isSendingEmail: boolean;
+  onEmail: () => void;
 }) {
+  const disabled = isRegenerating || isSendingEmail;
   return (
     <motion.div
       variants={{
@@ -910,22 +959,42 @@ function FooterActions({
         Back to the feed
       </Link>
 
-      <motion.button
-        type="button"
-        onClick={onRegenerate}
-        disabled={isRegenerating}
-        whileHover={isRegenerating ? undefined : { scale: 1.02 }}
-        whileTap={isRegenerating ? undefined : { scale: 0.97 }}
-        transition={{ duration: 0.25, ease: EASE }}
-        className="group inline-flex items-center gap-2 self-start rounded-full border-2 border-black bg-accent px-5 py-2.5 text-label font-semibold text-accent-foreground shadow-hard transition-[box-shadow,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard-lg active:translate-x-0 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-x-0 disabled:hover:translate-y-0 sm:self-auto"
-      >
-        {isRegenerating ? (
-          <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-        ) : (
-          <RefreshCw size={14} aria-hidden="true" />
-        )}
-        <span>{isRegenerating ? 'Regenerating…' : 'Regenerate report'}</span>
-      </motion.button>
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+        <motion.button
+          type="button"
+          onClick={onEmail}
+          disabled={disabled}
+          whileHover={disabled ? undefined : { scale: 1.02 }}
+          whileTap={disabled ? undefined : { scale: 0.97 }}
+          transition={{ duration: 0.25, ease: EASE }}
+          aria-label="Email this report to me"
+          className="group inline-flex items-center gap-2 rounded-full border-2 border-black bg-card px-5 py-2.5 text-label font-semibold text-foreground shadow-hard transition-[box-shadow,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard-lg active:translate-x-0 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-x-0 disabled:hover:translate-y-0"
+        >
+          {isSendingEmail ? (
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Mail size={14} aria-hidden="true" />
+          )}
+          <span>{isSendingEmail ? 'Sending…' : 'Email me this report'}</span>
+        </motion.button>
+
+        <motion.button
+          type="button"
+          onClick={onRegenerate}
+          disabled={disabled}
+          whileHover={disabled ? undefined : { scale: 1.02 }}
+          whileTap={disabled ? undefined : { scale: 0.97 }}
+          transition={{ duration: 0.25, ease: EASE }}
+          className="group inline-flex items-center gap-2 self-start rounded-full border-2 border-black bg-accent px-5 py-2.5 text-label font-semibold text-accent-foreground shadow-hard transition-[box-shadow,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard-lg active:translate-x-0 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-x-0 disabled:hover:translate-y-0 sm:self-auto"
+        >
+          {isRegenerating ? (
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <RefreshCw size={14} aria-hidden="true" />
+          )}
+          <span>{isRegenerating ? 'Regenerating…' : 'Regenerate report'}</span>
+        </motion.button>
+      </div>
     </motion.div>
   );
 }

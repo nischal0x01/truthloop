@@ -9,6 +9,7 @@ import uploadRouter from './upload';
 import reportsRouter from './reports';
 import forecastRouter from './forecast';
 import submissionsRouter from './submissions';
+import settingsRouter from './settings';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use('/upload', uploadRouter);
 router.use('/reports', reportsRouter);
 router.use('/forecast', forecastRouter);
 router.use('/submissions', submissionsRouter);
+router.use('/me', settingsRouter);
 
 export default router;
