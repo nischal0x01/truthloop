@@ -26,6 +26,7 @@ type SafeUser = {
   displayName: string;
   avatarUrl: string | null;
   points: number;
+  streakDays: number;
   isAdmin: boolean;
 };
 
@@ -36,6 +37,7 @@ function toSafeUser(row: typeof schema.users.$inferSelect): SafeUser {
     displayName: row.displayName,
     avatarUrl: row.avatarUrl,
     points: row.points,
+    streakDays: row.streakDays,
     isAdmin: row.isAdmin,
   };
 }

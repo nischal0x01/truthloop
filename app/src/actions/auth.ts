@@ -24,6 +24,7 @@ export interface SafeUser {
   displayName: string;
   avatarUrl: string | null;
   points: number;
+  streakDays: number;
   isAdmin: boolean;
 }
 
