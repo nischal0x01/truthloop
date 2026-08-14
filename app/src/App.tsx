@@ -25,6 +25,7 @@ import { Hero } from '@/components/landing/hero';
 import { WhyTruthLoop } from '@/components/landing/why-truthloop';
 import { LoopSteps } from '@/components/landing/loop-steps';
 import { BlindSpot } from '@/components/landing/blind-spot';
+import { Features } from '@/components/landing/features';
 import { Forecast as LandingForecast } from '@/components/landing/forecast';
 import { LeaderboardPreview } from '@/components/landing/leaderboard-preview';
 import { CTA } from '@/components/landing/cta';
@@ -51,6 +52,7 @@ const Landing = () => (
       <Hero />
       <WhyTruthLoop />
       <LoopSteps />
+      <Features />
       <BlindSpot />
       <LandingForecast />
       <LeaderboardPreview />
