@@ -20,7 +20,6 @@ import {
   MessageSquare,
   PlusCircle,
   Settings as SettingsIcon,
-  Send,
   Sparkles,
   Trophy,
   User as UserIcon,
