@@ -168,7 +168,49 @@ export const prescriptionFallback: Prescription = {
     "Pick one category this week and read two articles about how it gets made. Pattern recognition scales faster than rules.",
 };
 
-/* ── 5. Live fact-check (`.ai/05-ai-prompts.md` §5) ────────────────── */
+/* ── Leaderboard schemas ──────────────────────────────────────────────── */
+
+export const leaderboardEntrySchema = z.object({
+  rank: z.number(),
+  name: z.string(),
+  avatar: z.string().nullable(),
+  points: z.number(),
+  streak: z.number().optional(),
+  badges: z.number().optional(),
+  isCurrentUser: z.boolean().optional(),
+});
+
+export const dailyLeaderboardSchema = z.object({
+  entries: z.array(leaderboardEntrySchema),
+  userRank: z.number().nullable(),
+  scope: z.literal('daily'),
+});
+
+export const allTimeLeaderboardSchema = z.object({
+  entries: z.array(leaderboardEntrySchema),
+  userRank: z.number().nullable(),
+  scope: z.literal('all-time'),
+});
+
+export const userRankSchema = z.object({
+  dailyRank: z.number().nullable(),
+  allTimeRank: z.number(),
+  totalGuesses: z.number(),
+  accuracy: z.number(),
+});
+
+export const activityEntrySchema = z.object({
+  id: z.string(),
+  user: z.string(),
+  action: z.enum(['voted on', 'earned badge']),
+  target: z.string(),
+  correct: z.boolean().nullable(),
+  time: z.string(),
+});
+
+export const activityFeedSchema = z.object({
+  entries: z.array(activityEntrySchema),
+});
 
 export const factCheckSchema = z.object({
   verdict: verdictLevel,

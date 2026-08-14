@@ -11,6 +11,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { eq, sql, desc, and, gte } from 'drizzle-orm';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
+import { broadcast } from '@/sse/broadcaster';
 
 const router = Router();
 
@@ -158,6 +159,12 @@ router.post('/:id/guess', requireAuth, async (req, res) => {
       })
       .where(eq(schema.users.id, userId));
   }
+
+  // Broadcast leaderboard refresh to all connected SSE clients (fire-and-forget)
+  broadcast('leaderboard:daily', { userId, scope: 'daily' });
+
+  // Award top-10 badge if applicable (fire-and-forget)
+  db.execute(sql`SELECT award_top_10_badge()`).catch(() => {});
 
   res.status(201).json({
     guess: {

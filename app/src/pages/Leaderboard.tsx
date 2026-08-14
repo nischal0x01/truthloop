@@ -12,7 +12,8 @@
  *
  * On mobile the sidebar drops below the leaderboards (single column).
  *
- * The page itself only owns the dummy data + composition. Each view
+ * The page fetches live data from /api/leaderboard/* via TanStack Query.
+ * Each view
  * sub-component lives under @/components/leaderboard/:
  *   - Podium              → top-3 highlight strip
  *   - LeaderboardRow      → single ranked row
@@ -21,13 +22,14 @@
  *   - NextMilestoneCard   → sidebar card: progress bars + streak
  *   - RecentActivityCard  → sidebar card: global activity feed
  *
- * Uses hardcoded dummy data — swap to API once /api/leaderboard/* lands.
+ * Live data fetched via /api/leaderboard/* endpoints.
  */
 
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { motion } from 'motion/react';
 import { Flame, TrendingUp, Trophy } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { AppNav } from '@/components/AppNav';
 import {
   DEFAULT_MILESTONES,
@@ -47,47 +49,44 @@ import {
 import { YourRankCard } from '@/components/leaderboard/YourRankCard';
 import { useAuth } from '@/contexts/auth-context';
 import { EASE } from '@/lib/motion';
-
-/* ── Dummy data (replace with API once available) ── */
-
-const dailyLeaderboard: PodiumEntry[] = [
-  { rank: 1, name: 'Priya Sharma', avatar: null, points: 280, streak: 12 },
-  { rank: 2, name: 'Marco Rossi', avatar: null, points: 245, streak: 8 },
-  { rank: 3, name: 'Aisha Patel', avatar: null, points: 220, streak: 6 },
-  { rank: 4, name: 'James Chen', avatar: null, points: 195, streak: 4 },
-  { rank: 5, name: 'Sofia Rodriguez', avatar: null, points: 180, streak: 3 },
-];
-
-const allTimeLeaderboard: PodiumEntry[] = [
-  { rank: 1, name: 'Priya Sharma', avatar: null, points: 4820, badges: 12 },
-  { rank: 2, name: 'Marco Rossi', avatar: null, points: 4350, badges: 10 },
-  { rank: 3, name: 'Aisha Patel', avatar: null, points: 3980, badges: 9 },
-  { rank: 4, name: 'James Chen', avatar: null, points: 3650, badges: 8 },
-  { rank: 5, name: 'Sofia Rodriguez', avatar: null, points: 3290, badges: 7 },
-  { rank: 6, name: "Liam O'Brien", avatar: null, points: 2980, badges: 6 },
-  { rank: 7, name: 'Yuki Tanaka', avatar: null, points: 2650, badges: 5 },
-  { rank: 8, name: 'Emma Wilson', avatar: null, points: 2340, badges: 5 },
-];
-
-const recentActivity: ActivityEntry[] = [
-  { id: '1', user: 'Priya S.', action: 'voted on', target: 'Climate Claim', correct: true, time: '2m ago' },
-  { id: '2', user: 'Marco R.', action: 'voted on', target: 'Tech News', correct: false, time: '5m ago' },
-  { id: '3', user: 'Aisha P.', action: 'voted on', target: 'Health Tip', correct: true, time: '8m ago' },
-  { id: '4', user: 'James C.', action: 'earned badge', target: '5 Day Streak', correct: null, time: '12m ago' },
-];
+import {
+  getDailyLeaderboardQuery,
+  getAllTimeLeaderboardQuery,
+  getUserRankQuery,
+  getActivityQuery,
+} from '@/actions/leaderboard';
 
 /* ── Page ── */
 
 export function Leaderboard() {
   const { user } = useAuth();
 
-  // The demo user isn't in the dummy data, so no row is highlighted. The
-  // "you" pill only appears if a real user happens to match a seeded name.
-  const markCurrentUser = (entries: PodiumEntry[]) =>
-    entries.map((e) => ({ ...e, isCurrentUser: user?.displayName === e.name }));
+  const { data: dailyData } = useQuery(getDailyLeaderboardQuery());
+  const { data: allTimeData } = useQuery(getAllTimeLeaderboardQuery());
+  const { data: userRankData } = useQuery(getUserRankQuery());
+  const { data: activityData } = useQuery(getActivityQuery());
 
-  const dailyEntries = markCurrentUser(dailyLeaderboard);
-  const allTimeEntries = markCurrentUser(allTimeLeaderboard);
+  // API already marks isCurrentUser on each entry — just use as-is.
+  const dailyEntries: PodiumEntry[] = (dailyData?.entries ?? []).map((e) => ({
+    ...e,
+    // Fallback rank if API doesn't provide it
+    rank: e.rank,
+    name: e.name,
+    avatar: e.avatar,
+    points: e.points,
+    streak: e.streak,
+    isCurrentUser: e.isCurrentUser,
+  }));
+  const allTimeEntries: PodiumEntry[] = (allTimeData?.entries ?? []).map((e) => ({
+    ...e,
+    rank: e.rank,
+    name: e.name,
+    avatar: e.avatar,
+    points: e.points,
+    badges: e.badges,
+    isCurrentUser: e.isCurrentUser,
+  }));
+
   const dailyPodium = dailyEntries.slice(0, 3);
   const dailyRest = dailyEntries.slice(3);
   const allTimePodium = allTimeEntries.slice(0, 3);
@@ -211,19 +210,21 @@ export function Leaderboard() {
 
           {/* ── Right: sidebar ── */}
           <aside className="space-y-6 lg:sticky lg:top-6 lg:w-80 lg:self-start">
-            {user && (
+            {user && userRankData && (
               <YourRankCard
-                rank={42}
-                claimsVoted={24}
-                accuracy={0.71}
+                rank={userRankData.dailyRank ?? 0}
+                claimsVoted={userRankData.totalGuesses}
+                accuracy={userRankData.accuracy}
                 leaderboardLabel="Daily Leaderboard"
               />
             )}
             <NextMilestoneCard
               milestones={DEFAULT_MILESTONES}
-              currentStreakDays={5}
+              currentStreakDays={user?.streakDays ?? 0}
             />
-            <RecentActivityCard entries={recentActivity} />
+            <RecentActivityCard
+              entries={(activityData?.entries ?? []) as ActivityEntry[]}
+            />
           </aside>
         </div>
       </main>

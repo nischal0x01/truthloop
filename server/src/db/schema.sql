@@ -421,6 +421,36 @@ CREATE TRIGGER trg_increment_points
   FOR EACH ROW EXECUTE FUNCTION increment_points_on_correct_guess();
 
 -- ════════════════════════════════════════════════════════════════════════
+-- Leaderboard covering index — daily guess queries as a single index scan
+-- ════════════════════════════════════════════════════════════════════════
+
+CREATE INDEX IF NOT EXISTS idx_guesses_daily
+  ON guesses(user_id, created_at DESC)
+  INCLUDE (is_correct);
+
+-- ════════════════════════════════════════════════════════════════════════
+-- Leaderboard trigger — award top-10 badge after each vote
+-- ════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION award_top_10_badge()
+RETURNS void AS $$
+BEGIN
+  INSERT INTO user_badges (user_id, badge_slug)
+  SELECT ranked.user_id, 'top-10'
+  FROM (
+    SELECT g.user_id,
+           RANK() OVER (ORDER BY SUM(CASE WHEN g.is_correct THEN 10 ELSE 0 END) DESC) AS daily_rank
+    FROM guesses g
+    WHERE g.created_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+      AND g.created_at < date_trunc('day', NOW() AT TIME ZONE 'UTC') + INTERVAL '1 day'
+    GROUP BY g.user_id
+  ) ranked
+  WHERE ranked.daily_rank <= 10
+  ON CONFLICT (user_id, badge_slug) DO NOTHING;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ════════════════════════════════════════════════════════════════════════
 -- Demo seed  (5 starter claims — extended seed will live in seed.sql)
 -- ════════════════════════════════════════════════════════════════════════
 
