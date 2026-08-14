@@ -55,7 +55,7 @@ const updateSettingsSchema = z
 
 /* ── Handlers ──────────────────────────────────────────────────────── */
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/settings', requireAuth, async (req, res) => {
   const userId = (req.user as { id: string }).id;
 
   // Auto-create on first read so the UI doesn't have to handle "missing
@@ -83,7 +83,7 @@ router.get('/', requireAuth, async (req, res) => {
   });
 });
 
-router.put('/', requireAuth, async (req, res) => {
+router.put('/settings', requireAuth, async (req, res) => {
   const userId = (req.user as { id: string }).id;
   const patch = updateSettingsSchema.parse(req.body);
 
