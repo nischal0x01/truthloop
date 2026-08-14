@@ -31,6 +31,8 @@ import {
   HelpCircle,
   ExternalLink,
   Clock,
+  Quote,
+  ChevronDown,
 } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
 import { EASE } from '@/lib/motion';
@@ -49,14 +51,25 @@ const MAX_CHARS = 1000;
 
 const VERDICT_META: Record<
   FactCheck['verdict'],
-  { label: string; chipBg: string; chipFg: string; icon: typeof CheckCircle2; ring: string }
+  {
+    label: string;
+    chipBg: string;
+    chipFg: string;
+    icon: typeof CheckCircle2;
+    ring: string;
+    /** Tint for the outer-shell background and the left column rule. */
+    shellBg: string;
+    stripe: string;
+  }
 > = {
   real: {
     label: 'Real',
-    chipBg: 'bg-highlight',
-    chipFg: 'text-highlight-foreground',
+    chipBg: 'bg-real',
+    chipFg: 'text-white',
     icon: CheckCircle2,
-    ring: 'ring-highlight',
+    ring: 'ring-real',
+    shellBg: 'bg-real-light/40',
+    stripe: 'bg-real',
   },
   fake: {
     label: 'Likely fake',
@@ -64,6 +77,8 @@ const VERDICT_META: Record<
     chipFg: 'text-danger-foreground',
     icon: AlertTriangle,
     ring: 'ring-danger',
+    shellBg: 'bg-fake-light/40',
+    stripe: 'bg-danger',
   },
   unverified: {
     label: "Can't verify",
@@ -71,6 +86,8 @@ const VERDICT_META: Record<
     chipFg: 'text-warning-foreground',
     icon: HelpCircle,
     ring: 'ring-warning',
+    shellBg: 'bg-yellow/40',
+    stripe: 'bg-warning',
   },
 };
 
@@ -277,12 +294,21 @@ export function Submit() {
           )}
         </AnimatePresence>
 
-        <section className="mt-12">
-          <header className="mb-4 flex items-center justify-between">
-            <h2 className="font-display text-heading-2">My recent submissions</h2>
+        <section className="mt-16">
+          <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
+            <div className="flex flex-col gap-2">
+              <p className="flex items-center gap-2 text-label-small font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-foreground" />
+                Private to you
+              </p>
+              <h2 className="font-display text-display-small leading-[0.95]">
+                My recent submissions
+              </h2>
+            </div>
             {mineQuery.data && (
-              <span className="text-label-small text-muted-foreground">
-                {mineQuery.data.length} total
+              <span className="inline-flex items-center gap-2 rounded-pill border-2 border-black bg-card px-3 py-1 text-label-small font-semibold shadow-hard-sm">
+                <span className="font-mono">{mineQuery.data.length}</span>
+                <span className="text-muted-foreground">total</span>
               </span>
             )}
           </header>
@@ -294,11 +320,19 @@ export function Submit() {
           ) : mineQuery.data.length === 0 ? (
             <EmptyRecent />
           ) : (
-            <ul className="flex flex-col gap-3">
+            <motion.ul
+              className="flex flex-col gap-5"
+              initial="hidden"
+              animate="show"
+              variants={{
+                hidden: {},
+                show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+              }}
+            >
               {mineQuery.data.map((s) => (
                 <RecentRow key={s.id} submission={s} />
               ))}
-            </ul>
+            </motion.ul>
           )}
         </section>
       </main>
@@ -427,43 +461,287 @@ function ResultCard({
   );
 }
 
+/**
+ * RecentRow — premium magazine-spread card for a single submission.
+ *
+ * Anatomy (outer → inner):
+ *   1. Motion wrapper — fade-up + blur entry, staggered from the parent <ul>.
+ *   2. Outer shell — rounded-2xl, tinted verdict background, p-1.5 wrapper.
+ *      Hosts the left "column rule" stripe (4px → 6px on hover) and lifts on hover.
+ *   3. Inner core — a <button> so the entire row is clickable; expand toggle
+ *      lives here. p-5 md:p-6 with the asymmetric grid (claim 2/3 + verdict 1/3).
+ *   4. Expandable detail panel — full explanation, numbered source cards,
+ *      category + full timestamp. Slides open with a smooth height animation.
+ *
+ * Layout: asymmetric. Mobile = single column. md+ = claim takes 2/3, verdict
+ * stack takes 1/3 on the right.
+ */
 function RecentRow({ submission }: { submission: Submission }) {
+  const [expanded, setExpanded] = useState(false);
   const verdict = submission.aiVerdict ?? 'unverified';
   const meta = VERDICT_META[verdict];
   const Icon = meta.icon;
+  const confidence = submission.aiConfidence ?? 0;
+  const sources = submission.aiSources ?? [];
+  const hasDetail =
+    (submission.aiExplanation && submission.aiExplanation.length > 0) ||
+    sources.length > 0 ||
+    !!submission.aiCategory;
+
+  // First sentence of the explanation becomes the pull-quote — it carries the
+  // verdict's reasoning in plain language, which is what the user actually
+  // wants to glance at when scanning the list.
+  const pullQuote = submission.aiExplanation?.split(/[.!?]/)[0]?.trim();
 
   return (
-    <li className="rounded-lg border-2 border-black bg-card p-4 shadow-hard-sm">
-      <div className="flex items-start justify-between gap-3">
-        <p className="line-clamp-2 text-body-medium font-medium">{submission.text}</p>
+    <motion.li
+      variants={{
+        hidden: { opacity: 0, y: 28, filter: 'blur(10px)' },
+        show: {
+          opacity: 1,
+          y: 0,
+          filter: 'blur(0px)',
+          transition: { duration: 0.7, ease: EASE },
+        },
+      }}
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.5, ease: EASE }}
+      className="group relative"
+    >
+      {/* Outer shell — tinted verdict background acts as the "tray" */}
+      <div
+        className={[
+          'relative rounded-2xl p-1.5',
+          'transition-shadow duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
+          'shadow-hard group-hover:shadow-hard-lg',
+          meta.shellBg,
+        ].join(' ')}
+      >
+        {/* Left column rule — the magazine spread "stripe" */}
         <span
+          aria-hidden
           className={[
-            'inline-flex shrink-0 items-center gap-1 rounded-pill border-2 border-black px-2.5 py-0.5 text-label-small font-semibold',
-            meta.chipBg,
-            meta.chipFg,
+            'absolute top-1.5 bottom-1.5 left-0 w-1 rounded-r-md',
+            'transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
+            meta.stripe,
+            'group-hover:w-1.5',
           ].join(' ')}
+        />
+
+        {/* Inner core — rounded-2xl outer (1rem) minus p-1.5 (0.375rem) = concentric curve.
+            Rendered as a <button> so the whole card is keyboard-accessible. */}
+        <button
+          type="button"
+          onClick={() => hasDetail && setExpanded((v) => !v)}
+          disabled={!hasDetail}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse details' : 'Expand details'}
+          className="relative block w-full rounded-[0.625rem] border-2 border-black bg-card p-5 text-left md:p-6 cursor-pointer disabled:cursor-default focus-visible:outline-3 focus-visible:outline-black"
         >
-          <Icon size={10} aria-hidden="true" />
-          {meta.label}
-        </span>
+          <div className="grid gap-5 md:grid-cols-[1fr_auto] md:gap-6">
+            {/* ── Left: claim + reason ── */}
+            <div className="min-w-0 flex flex-col gap-3">
+              {/* Eyebrow: time + category */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="font-mono">{shortTimeAgo(submission.createdAt)}</span>
+                {submission.aiCategory && (
+                  <>
+                    <span aria-hidden className="inline-block h-1 w-1 rounded-full bg-foreground/40" />
+                    <span className="font-mono">
+                      {submission.aiCategory.replace(/_/g, ' ')}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* The submitted claim — display weight, generous tracking */}
+              <p className="font-display text-body-large font-medium leading-[1.25] text-foreground">
+                {submission.text}
+              </p>
+
+              {/* Pull-quote: first sentence of the explanation, if present */}
+              {pullQuote && pullQuote.length > 12 && (
+                <figure className="mt-1 flex gap-2 border-l-2 border-foreground/20 pl-3">
+                  <Quote
+                    size={14}
+                    aria-hidden
+                    className="mt-0.5 shrink-0 text-foreground/40"
+                  />
+                  <blockquote className="text-label-small italic leading-snug text-muted-foreground">
+                    {pullQuote}.
+                  </blockquote>
+                </figure>
+              )}
+            </div>
+
+            {/* ── Right: verdict column (1/3 on md+) ── */}
+            <div className="flex shrink-0 flex-col items-stretch gap-3 md:items-end md:text-right">
+              {/* Verdict chip */}
+              <span
+                className={[
+                  'inline-flex items-center gap-1.5 self-start rounded-pill border-2 border-black px-3 py-1 text-label-small font-bold uppercase tracking-[0.08em]',
+                  meta.chipBg,
+                  meta.chipFg,
+                ].join(' ')}
+              >
+                <Icon size={12} aria-hidden="true" />
+                {meta.label}
+              </span>
+
+              {/* Confidence: large display number + thin kinetic bar */}
+              <div className="flex flex-col gap-1.5 md:items-end">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-display text-heading-2 leading-none">
+                    {confidence}
+                  </span>
+                  <span className="text-label-small font-medium text-muted-foreground">
+                    %
+                  </span>
+                </div>
+                <div className="h-1.5 w-32 overflow-hidden rounded-pill border-2 border-black bg-muted md:w-28">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${confidence}%` }}
+                    transition={{ duration: 0.9, ease: EASE, delay: 0.2 }}
+                    className={[
+                      'h-full',
+                      verdict === 'real' && 'bg-real',
+                      verdict === 'fake' && 'bg-danger',
+                      verdict === 'unverified' && 'bg-warning',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Expand/collapse affordance — bottom-right chevron that rotates */}
+          {hasDetail && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground"
+            >
+              {expanded ? 'Hide' : 'Details'}
+              <ChevronDown
+                size={12}
+                className="transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              />
+            </span>
+          )}
+        </button>
+
+        {/* Expandable detail panel — full explanation + sources + meta.
+            Sits inside the same outer shell so the double-bezel nesting is
+            preserved when expanded. */}
+        <AnimatePresence initial={false}>
+          {expanded && hasDetail && (
+            <motion.div
+              key="detail"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.5, ease: EASE }}
+              className="overflow-hidden"
+            >
+              <div className="px-1.5 pb-1.5 pt-0">
+                <div className="rounded-[0.625rem] border-2 border-black bg-background p-5 md:p-6">
+                  <div className="flex flex-col gap-5">
+                    {/* Full explanation */}
+                    {submission.aiExplanation && (
+                      <div className="flex flex-col gap-2">
+                        <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                          What Claude said
+                        </h4>
+                        <p className="text-body leading-relaxed text-foreground/90">
+                          {submission.aiExplanation}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Sources — numbered cards with hover-lift */}
+                    {sources.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                          Sources cited ({sources.length})
+                        </h4>
+                        <ul className="flex flex-col gap-2">
+                          {sources.map((src, i) => (
+                            <li key={i}>
+                              <a
+                                href={src.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="group/src inline-flex w-full items-center gap-3 rounded-md border-2 border-black bg-card p-3 shadow-hard-sm transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover-lift"
+                              >
+                                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                                  {String(i + 1).padStart(2, '0')}
+                                </span>
+                                <span className="flex-1 min-w-0">
+                                  <span className="block truncate text-label-small font-medium text-foreground group-hover/staff:underline">
+                                    {src.title}
+                                  </span>
+                                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                                    {(() => {
+                                      try {
+                                        return new URL(src.url).hostname.replace(/^www\./, '');
+                                      } catch {
+                                        return src.url;
+                                      }
+                                    })()}
+                                  </span>
+                                </span>
+                                <ExternalLink
+                                  size={14}
+                                  aria-hidden
+                                  className="shrink-0 text-muted-foreground transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover/staff:-translate-y-0.5 group-hover/staff:translate-x-0.5"
+                                />
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Metadata strip — category + full timestamp */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t-2 border-foreground/10 pt-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      {submission.aiCategory && (
+                        <span className="font-mono">
+                          Category · {submission.aiCategory.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      <span aria-hidden className="inline-block h-1 w-1 rounded-full bg-foreground/40" />
+                      <span className="font-mono">
+                        {new Date(submission.createdAt).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-      <div className="mt-2 flex items-center justify-between text-label-small text-muted-foreground">
-        <span>
-          {submission.aiConfidence ?? 0}% · {shortTimeAgo(submission.createdAt)}
-        </span>
-        {submission.aiCategory && (
-          <span className="font-mono uppercase">{submission.aiCategory.replace(/_/g, ' ')}</span>
-        )}
-      </div>
-    </li>
+    </motion.li>
   );
 }
 
 function RecentSkeleton() {
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-5">
       {[0, 1, 2].map((i) => (
-        <li key={i} className="h-20 animate-pulse rounded-lg border-2 border-black bg-card" />
+        <li
+          key={i}
+          className="h-36 animate-pulse rounded-2xl border-2 border-black bg-card/60"
+        />
       ))}
     </ul>
   );
@@ -471,10 +749,19 @@ function RecentSkeleton() {
 
 function EmptyRecent() {
   return (
-    <div className="rounded-lg border-2 border-dashed border-black bg-card/50 p-6 text-center">
-      <Sparkles className="mx-auto mb-2 size-6 text-muted-foreground" aria-hidden="true" />
-      <p className="text-body text-muted-foreground">
-        Your past submissions will appear here. Try pasting a headline above.
+    <div className="relative overflow-hidden rounded-2xl border-2 border-dashed border-black bg-card/60 p-10 text-center">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -top-12 left-1/2 h-32 w-32 -translate-x-1/2 rounded-full bg-accent/30 blur-2xl"
+      />
+      <Sparkles
+        className="mx-auto mb-3 size-8 text-foreground/70"
+        aria-hidden="true"
+      />
+      <h3 className="font-display text-heading-3">Nothing here yet.</h3>
+      <p className="mt-2 max-w-sm mx-auto text-body text-muted-foreground">
+        Your past submissions will appear here. Try pasting a headline above —
+        each one earns points and sharpens your blind-spot report.
       </p>
     </div>
   );
