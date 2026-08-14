@@ -10,6 +10,7 @@ import { motion } from 'motion/react';
 import { LogOut, User as UserIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { UserAvatar } from '@/components/auth/UserAvatar';
+import { MobileMenuDrawer } from '@/components/ui/MobileMenuDrawer';
 
 interface AppNavProps {
   /** Show "Claims" link when true (used in Feed) */
@@ -197,8 +198,115 @@ export function AppNav({ showClaims = true }: AppNavProps) {
               </div>
             </>
           )}
+
+          {/* Mobile-only hamburger + drawer (the inline nav links above are hidden below md). */}
+          <MobileMenuDrawer triggerLabel="Open navigation menu">
+            {(close) => (
+              <div className="flex flex-col gap-1">
+                {showClaims && (
+                  <NavDrawerLink
+                    to="/claims"
+                    active={location.pathname.startsWith('/claims')}
+                    onClick={close}
+                  >
+                    Claims
+                  </NavDrawerLink>
+                )}
+                <NavDrawerLink
+                  to="/leaderboard"
+                  active={location.pathname === '/leaderboard'}
+                  onClick={close}
+                >
+                  Leaderboard
+                </NavDrawerLink>
+                <NavDrawerLink
+                  to="/discussions"
+                  active={location.pathname.startsWith('/discussions')}
+                  onClick={close}
+                >
+                  Discussions
+                </NavDrawerLink>
+                <NavDrawerLink
+                  to="/forecast"
+                  active={location.pathname === '/forecast'}
+                  onClick={close}
+                >
+                  Forecast
+                </NavDrawerLink>
+                <NavDrawerLink
+                  to="/submit"
+                  active={location.pathname === '/submit'}
+                  onClick={close}
+                >
+                  Submit
+                </NavDrawerLink>
+                <NavDrawerLink
+                  to="/reports/weekly"
+                  active={location.pathname === '/reports/weekly'}
+                  onClick={close}
+                >
+                  Reports
+                </NavDrawerLink>
+
+                {user && (
+                  <div className="mt-4 border-t-2 border-black pt-4">
+                    <Link
+                      to="/profile"
+                      onClick={close}
+                      className="flex items-center gap-2 rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                    >
+                      <UserIcon size={16} aria-hidden="true" />
+                      Profile
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-body font-medium hover:bg-muted text-left"
+                    >
+                      <LogOut size={16} aria-hidden="true" />
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </MobileMenuDrawer>
         </div>
       </div>
     </header>
+  );
+}
+
+/** Compact link row used inside the mobile drawer. */
+function NavDrawerLink({
+  to,
+  active,
+  onClick,
+  children,
+}: {
+  to: string;
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={[
+        'flex items-center justify-between rounded-lg border-2 px-3 py-3 text-body font-medium transition-colors',
+        active
+          ? 'border-black bg-accent text-accent-foreground shadow-hard-sm'
+          : 'border-transparent hover:bg-muted',
+      ].join(' ')}
+    >
+      <span>{children}</span>
+      {active && (
+        <span aria-hidden="true" className="font-mono text-label-small uppercase tracking-[0.08em]">
+          active
+        </span>
+      )}
+    </Link>
   );
 }

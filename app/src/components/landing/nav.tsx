@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, User as UserIcon } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
+import { MobileMenuDrawer } from '@/components/ui/MobileMenuDrawer';
 import { UserAvatar } from '@/components/auth/UserAvatar';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -235,6 +236,93 @@ export function Nav() {
               </motion.div>
             </>
           )}
+
+          {/* Mobile-only hamburger + drawer. The desktop <nav> above is hidden below md. */}
+          <MobileMenuDrawer triggerLabel="Open navigation menu">
+            {(close) => (
+              <div className="flex flex-col gap-1">
+                <a
+                  href="#loop"
+                  onClick={close}
+                  className="rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                >
+                  How it works
+                </a>
+                <a
+                  href="#forecast"
+                  onClick={close}
+                  className="rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                >
+                  Scam Forecast
+                </a>
+                <a
+                  href="#blind-spot"
+                  onClick={close}
+                  className="rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                >
+                  Weekly Report
+                </a>
+                {isAuthenticated ? (
+                  <Link
+                    to="/leaderboard"
+                    onClick={close}
+                    className="rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                  >
+                    Leaderboard
+                  </Link>
+                ) : (
+                  <a
+                    href="#leaderboard"
+                    onClick={close}
+                    className="rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                  >
+                    Leaderboard
+                  </a>
+                )}
+
+                {/* Divider + auth actions at the bottom of the drawer */}
+                <div className="mt-4 border-t-2 border-black pt-4">
+                  {isAuthenticated ? (
+                    <>
+                      <Link
+                        to="/profile"
+                        onClick={close}
+                        className="flex items-center gap-2 rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                      >
+                        <UserIcon size={16} aria-hidden="true" />
+                        Profile
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-body font-medium hover:bg-muted text-left"
+                      >
+                        <LogOut size={16} aria-hidden="true" />
+                        Sign out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        to="/signin"
+                        onClick={close}
+                        className="block rounded-lg px-3 py-3 text-body font-medium hover:bg-muted"
+                      >
+                        Sign in
+                      </Link>
+                      <Link
+                        to="/signup"
+                        onClick={close}
+                        className="mt-1 block rounded-lg border-2 border-black bg-accent px-3 py-3 text-center text-body font-semibold text-accent-foreground shadow-hard"
+                      >
+                        Get started
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </MobileMenuDrawer>
         </div>
       </div>
     </motion.header>
