@@ -18,7 +18,7 @@ interface Milestone {
   /** Visible label. May include JSX (e.g. icon + text). */
   label: React.ReactNode;
   pointsAway: number;
-  /** 0..1 fill ratio of the bar. */
+  /** 0..1 fill ratio of the bar. Hidden when pointsAway === -1. */
   progress: number;
   /** Bar fill colour. */
   barClass: string;
@@ -55,16 +55,22 @@ export function NextMilestoneCard({ milestones, currentStreakDays }: NextMilesto
           >
             <div className="flex items-center justify-between text-label-small">
               <span className="flex items-center gap-1">{m.label}</span>
-              <span className="font-semibold tabular-nums">{m.pointsAway} pts away</span>
+              {m.pointsAway === -1 ? (
+                <span className="font-semibold tabular-nums text-muted-foreground">by invite</span>
+              ) : (
+                <span className="font-semibold tabular-nums">{m.pointsAway} pts away</span>
+              )}
             </div>
-            <div className="mt-1.5 h-2 overflow-hidden rounded-full border border-black bg-muted">
-              <motion.div
-                initial={{ width: '0%' }}
-                animate={{ width: `${Math.round(m.progress * 100)}%` }}
-                transition={{ duration: 1, ease: EASE, delay: 0.4 + i * 0.1, type: 'spring', damping: 18 }}
-                className={['h-full', m.barClass].join(' ')}
-              />
-            </div>
+            {m.pointsAway !== -1 && (
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full border border-black bg-muted">
+                <motion.div
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${Math.round(m.progress * 100)}%` }}
+                  transition={{ duration: 1, ease: EASE, delay: 0.4 + i * 0.1, type: 'spring', damping: 18 }}
+                  className={['h-full', m.barClass].join(' ')}
+                />
+              </div>
+            )}
           </motion.div>
         ))}
       </div>

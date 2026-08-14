@@ -65,7 +65,9 @@ export interface MilestonesPayload {
     name: string;
     icon: string;
     rarity: string;
+    /** -1 = binary badge (no progress bar), 0 = event-triggered, >0 = pts-based */
     pointsNeeded: number;
+    progress: number; // 0..1; 0 when pointsNeeded === -1 (skip bar)
   } | null;
   userDailyPoints: number;
   userRank: number;

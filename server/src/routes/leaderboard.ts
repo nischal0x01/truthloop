@@ -293,8 +293,39 @@ router.get('/milestones', requireAuth, async (req, res) => {
   // Also compute how many points until that badge (badges are event-based, not point-based,
   // so we show 0 pts away and let the trigger handle it — the user just needs to keep voting)
   const nextBadge = nextBadgeResult.rows[0] ?? null;
+
+  // Compute a meaningful progress proxy per badge type.
+  // Streak-based badges: progress = min(streak / threshold, 1.0)
+  // Binary badges (e.g. founding-100, top-10): pointsNeeded = -1 → no progress bar
+  const streakResult = await db.execute<{ streak: number }>(sql`
+    SELECT streak_days::int AS streak FROM users WHERE id = ${userId}
+  `);
+  const streak = streakResult.rows[0]?.streak ?? 0;
+
+  let badgeProgress = 0.3; // default: started, not yet earned
+  let badgePointsNeeded = 0;
+
+  // Binary badges — no incremental progress path, no progress bar
+  if (nextBadge?.slug === 'founding-100' || nextBadge?.slug === 'top-10') {
+    badgeProgress = 0;
+    badgePointsNeeded = -1; // signal to frontend: skip the progress bar
+  } else if (nextBadge?.slug === 'on-a-roll') {
+    badgeProgress = Math.min(streak / 3, 1);
+  } else if (nextBadge?.slug === 'weekly-warrior') {
+    badgeProgress = Math.min(streak / 7, 1);
+  } else if (nextBadge?.slug === 'first-guess') {
+    badgeProgress = 0.8;
+  }
+
   const nextBadgeData = nextBadge && !earnedSlugs.has(nextBadge.slug)
-    ? { slug: nextBadge.slug, name: nextBadge.name, icon: nextBadge.icon, rarity: nextBadge.rarity, pointsNeeded: 0 }
+    ? {
+        slug: nextBadge.slug,
+        name: nextBadge.name,
+        icon: nextBadge.icon,
+        rarity: nextBadge.rarity,
+        pointsNeeded: badgePointsNeeded,
+        progress: badgeProgress,
+      }
     : null;
 
   res.json({

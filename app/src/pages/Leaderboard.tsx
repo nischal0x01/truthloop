@@ -94,7 +94,7 @@ export function Leaderboard() {
           ? {
               label: milestonesData.nextBadge.name,
               pointsAway: milestonesData.nextBadge.pointsNeeded,
-              progress: 0.5,
+              progress: milestonesData.nextBadge.progress,
               barClass: 'bg-yellow',
             }
           : {
