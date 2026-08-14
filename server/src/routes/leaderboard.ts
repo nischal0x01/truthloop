@@ -174,6 +174,138 @@ router.get('/me', requireAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// GET /leaderboard/milestones
+// Real next-rank target + next unearned badge for the current user.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/milestones', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+  const todayStart = sql`date_trunc('day', NOW() AT TIME ZONE 'UTC')`;
+  const tomorrowStart = sql`date_trunc('day', NOW() AT TIME ZONE 'UTC') + INTERVAL '1 day'`;
+
+  // User's daily points today
+  const dailyResult = await db.execute<{ pts: number }>(sql`
+    SELECT COALESCE(SUM(CASE WHEN is_correct THEN 10 ELSE 0 END), 0)::int AS pts
+    FROM guesses
+    WHERE user_id = ${userId}
+      AND created_at >= ${todayStart}
+      AND created_at < ${tomorrowStart}
+  `);
+  const dailyPts = dailyResult.rows[0]?.pts ?? 0;
+
+  // Rank thresholds: build a mini leaderboard just for the ranks we care about.
+  // Ranks to check: 10, 5, 1 (the milestone targets).
+  // We compute the points needed to reach each by finding the points of the
+  // user currently at that rank, then computing the gap.
+  const rankTargetsResult = await db.execute<{ rank: number; pts: number }>(sql`
+    WITH ranked AS (
+      SELECT
+        u.id,
+        RANK() OVER (ORDER BY COALESCE(SUM(CASE WHEN g.is_correct THEN 10 ELSE 0 END), 0) DESC, COUNT(g.id) ASC) AS rnk,
+        COALESCE(SUM(CASE WHEN g.is_correct THEN 10 ELSE 0 END), 0)::int AS pts
+      FROM users u
+      LEFT JOIN guesses g ON g.user_id = u.id
+        AND g.created_at >= ${todayStart}
+        AND g.created_at < ${tomorrowStart}
+      WHERE u.is_admin = false
+      GROUP BY u.id
+    )
+    SELECT rnk AS rank, pts
+    FROM ranked
+    WHERE rnk IN (1, 5, 10)
+    ORDER BY rnk ASC
+  `);
+
+  const thresholds = rankTargetsResult.rows; // [{rank, pts}, ...]
+
+  // Find the next rank milestone above the user
+  const userRankResult = await db.execute<{ rank: number }>(sql`
+    SELECT COUNT(*) + 1 AS rank
+    FROM (
+      SELECT user_id, SUM(CASE WHEN is_correct THEN 10 ELSE 0 END) AS pts
+      FROM guesses
+      WHERE created_at >= ${todayStart}
+        AND created_at < ${tomorrowStart}
+      GROUP BY user_id
+    ) ranked
+    WHERE pts > ${dailyPts}
+  `);
+  const userRank = userRankResult.rows[0]?.rank ?? 1;
+
+  // Compute next rank target:
+  // If user is already #1 → no next rank milestone
+  // Otherwise find the next rank threshold above them
+  let nextRankMilestone: { targetRank: number; pointsNeeded: number; currentPoints: number } | null = null;
+  if (userRank > 1) {
+    // Find the rank just above the user
+    const aboveRankResult = await db.execute<{ rnk: number; pts: number }>(sql`
+      WITH ranked AS (
+        SELECT
+          u.id,
+          RANK() OVER (ORDER BY COALESCE(SUM(CASE WHEN g.is_correct THEN 10 ELSE 0 END), 0) DESC, COUNT(g.id) ASC) AS rnk,
+          COALESCE(SUM(CASE WHEN g.is_correct THEN 10 ELSE 0 END), 0)::int AS pts
+        FROM users u
+        LEFT JOIN guesses g ON g.user_id = u.id
+          AND g.created_at >= ${todayStart}
+          AND g.created_at < ${tomorrowStart}
+        WHERE u.is_admin = false
+        GROUP BY u.id
+      )
+      SELECT rnk, pts FROM ranked
+      WHERE rnk < ${userRank}
+      ORDER BY rnk DESC
+      LIMIT 1
+    `);
+    const above = aboveRankResult.rows[0];
+    if (above) {
+      nextRankMilestone = {
+        targetRank: Number(above.rnk),
+        pointsNeeded: Math.max(0, Number(above.pts) - dailyPts + 1),
+        currentPoints: dailyPts,
+      };
+    }
+  }
+
+  // Next unearned badge
+  const earnedResult = await db.execute<{ slug: string }>(sql`
+    SELECT badge_slug::text FROM user_badges WHERE user_id = ${userId}
+  `);
+  const earnedSlugs = new Set(earnedResult.rows.map((r) => r.slug));
+
+  const nextBadgeResult = await db.execute<{
+    slug: string;
+    name: string;
+    icon: string;
+    rarity: string;
+  }>(sql`
+    SELECT slug::text, name::text, icon::text, rarity::text
+    FROM badges
+    WHERE slug != 'top-10'  -- top-10 is awarded automatically, skip it
+    ORDER BY
+      CASE rarity
+        WHEN 'legendary' THEN 1
+        WHEN 'epic' THEN 2
+        WHEN 'rare' THEN 3
+        WHEN 'common' THEN 4
+      END ASC
+    LIMIT 1
+  `);
+
+  // Also compute how many points until that badge (badges are event-based, not point-based,
+  // so we show 0 pts away and let the trigger handle it — the user just needs to keep voting)
+  const nextBadge = nextBadgeResult.rows[0] ?? null;
+  const nextBadgeData = nextBadge && !earnedSlugs.has(nextBadge.slug)
+    ? { slug: nextBadge.slug, name: nextBadge.name, icon: nextBadge.icon, rarity: nextBadge.rarity, pointsNeeded: 0 }
+    : null;
+
+  res.json({
+    nextRank: nextRankMilestone,
+    nextBadge: nextBadgeData,
+    userDailyPoints: dailyPts,
+    userRank,
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // GET /leaderboard/activity
 // Recent global votes and badge awards, mixed and sorted by time DESC.
 // ──────────────────────────────────────────────────────────────────────────
@@ -198,7 +330,7 @@ router.get('/activity', requireAuth, async (req, res) => {
       JOIN users u ON u.id = g.user_id
       JOIN claims c ON c.id = g.claim_id
       ORDER BY g.created_at DESC
-      LIMIT 15
+      LIMIT 4
     )
     UNION ALL
     (
@@ -213,10 +345,10 @@ router.get('/activity', requireAuth, async (req, res) => {
       JOIN users u ON u.id = ub.user_id
       JOIN badges b ON b.slug = ub.badge_slug
       ORDER BY ub.earned_at DESC
-      LIMIT 8
+      LIMIT 1
     )
     ORDER BY created_at DESC
-    LIMIT 20
+    LIMIT 5
   `);
 
   const entries = rows.rows.map((r) => ({

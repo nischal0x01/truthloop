@@ -54,6 +54,23 @@ export interface ActivityPayload {
   entries: ActivityEntry[];
 }
 
+export interface MilestonesPayload {
+  nextRank: {
+    targetRank: number;
+    pointsNeeded: number;
+    currentPoints: number;
+  } | null;
+  nextBadge: {
+    slug: string;
+    name: string;
+    icon: string;
+    rarity: string;
+    pointsNeeded: number;
+  } | null;
+  userDailyPoints: number;
+  userRank: number;
+}
+
 /* ── Query keys ── */
 
 export const leaderboardKeys = {
@@ -62,6 +79,7 @@ export const leaderboardKeys = {
   allTime: () => [...leaderboardKeys.all, 'all-time'] as const,
   me: () => [...leaderboardKeys.all, 'me'] as const,
   activity: () => [...leaderboardKeys.all, 'activity'] as const,
+  milestones: () => [...leaderboardKeys.all, 'milestones'] as const,
 };
 
 export const invalidateLeaderboard = () => {
@@ -104,4 +122,12 @@ export const getActivityQuery = () => ({
     return api<ActivityPayload>('/api/leaderboard/activity');
   },
   staleTime: 15_000,
+});
+
+export const getMilestonesQuery = () => ({
+  queryKey: leaderboardKeys.milestones(),
+  queryFn: async (): Promise<MilestonesPayload> => {
+    return api<MilestonesPayload>('/api/leaderboard/milestones');
+  },
+  staleTime: 60_000,
 });

@@ -248,6 +248,17 @@ export async function runSeed(opts: SeedOptions = {}): Promise<SeedSummary> {
   }
   log(`+${LEADERBOARD_CAST.length} leaderboard cast`);
 
+  // Collect cast user IDs for later use (after claims are seeded)
+  const castIds: string[] = [];
+  for (const u of LEADERBOARD_CAST) {
+    const [row] = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, `${u.handle}@seed.truthloop.app`))
+      .limit(1);
+    if (row) castIds.push(row.id);
+  }
+
   // 2. Claims ───────────────────────────────────────────────────────────────
   let insertedClaims = 0;
   const claimIds: string[] = [];
@@ -304,6 +315,32 @@ export async function runSeed(opts: SeedOptions = {}): Promise<SeedSummary> {
       .onConflictDoNothing();
   }
   log(`${guesses.length} demo guesses (mixed accuracy)`);
+
+  // 3b. Leaderboard cast guesses — each cast user votes on a mix of claims
+  // so they appear in the daily leaderboard. Points on users.points were set
+  // at seed time (all-time), but we need guesses for the daily query.
+  if (castIds.length > 0 && claimIds.length > 0 && claimIds[0] !== '(dry-run)') {
+    const castGuessCount = 15; // each cast user makes this many guesses
+    let castGuessTotal = 0;
+    for (const castId of castIds) {
+      // Pick a subset of claims and vary correctness so ranks are spread out
+      const startIdx = castIds.indexOf(castId) * 3; // stagger claim selection
+      for (let i = 0; i < castGuessCount; i++) {
+        const claimIdx = (startIdx + i) % claimIds.length;
+        const claimId = claimIds[claimIdx];
+        if (!claimId || claimId === '(dry-run)') continue;
+        // ~80% correct for high-rank users, ~60% for lower-rank
+        const correctProb = castIds.indexOf(castId) < 2 ? 0.85 : 0.65;
+        const isCorrect = Math.random() < correctProb;
+        await db
+          .insert(schema.guesses)
+          .values({ userId: castId, claimId, userAnswer: isCorrect ? 'real' : 'fake', isCorrect })
+          .onConflictDoNothing();
+        castGuessTotal++;
+      }
+    }
+    log(`${castGuessTotal} leaderboard cast guesses`);
+  }
 
   // 4. Badges ───────────────────────────────────────────────────────────────
   for (const b of BADGES) await ensureBadge(b, dryRun);

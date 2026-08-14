@@ -54,6 +54,8 @@ import {
   getAllTimeLeaderboardQuery,
   getUserRankQuery,
   getActivityQuery,
+  getMilestonesQuery,
+  type Milestone,
 } from '@/actions/leaderboard';
 
 /* ── Page ── */
@@ -65,6 +67,44 @@ export function Leaderboard() {
   const { data: allTimeData } = useQuery(getAllTimeLeaderboardQuery());
   const { data: userRankData } = useQuery(getUserRankQuery());
   const { data: activityData } = useQuery(getActivityQuery());
+  const { data: milestonesData } = useQuery(getMilestonesQuery());
+
+  // Build milestones from live data
+  const milestones: Milestone[] = milestonesData
+    ? [
+        milestonesData.nextRank
+          ? {
+              label: `Rank #${milestonesData.nextRank.targetRank} Daily`,
+              pointsAway: milestonesData.nextRank.pointsNeeded,
+              progress: Math.max(0,
+                Math.min(1,
+                  milestonesData.nextRank.currentPoints /
+                    (milestonesData.nextRank.currentPoints + milestonesData.nextRank.pointsNeeded)
+                )
+              ),
+              barClass: 'bg-accent',
+            }
+          : {
+              label: 'Already #1 Today!',
+              pointsAway: 0,
+              progress: 1,
+              barClass: 'bg-accent',
+            },
+        milestonesData.nextBadge
+          ? {
+              label: milestonesData.nextBadge.name,
+              pointsAway: milestonesData.nextBadge.pointsNeeded,
+              progress: 0.5,
+              barClass: 'bg-yellow',
+            }
+          : {
+              label: 'All badges earned',
+              pointsAway: 0,
+              progress: 1,
+              barClass: 'bg-yellow',
+            },
+      ]
+    : [];
 
   // API already marks isCurrentUser on each entry — just use as-is.
   const dailyEntries: PodiumEntry[] = (dailyData?.entries ?? []).map((e) => ({
@@ -219,7 +259,7 @@ export function Leaderboard() {
               />
             )}
             <NextMilestoneCard
-              milestones={DEFAULT_MILESTONES}
+              milestones={milestones.length > 0 ? milestones : DEFAULT_MILESTONES}
               currentStreakDays={user?.streakDays ?? 0}
             />
             <RecentActivityCard
