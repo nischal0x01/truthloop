@@ -21,7 +21,7 @@
  *   - Sources open in a new tab with rel=noopener.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -33,6 +33,8 @@ import {
   Clock,
   Quote,
   ChevronDown,
+  CalendarDays,
+  X,
 } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
 import { EASE } from '@/lib/motion';
@@ -103,6 +105,14 @@ function shortTimeAgo(iso: string): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+/** YYYY-MM-DD (UTC) — used for client-side day-bucketing of submissions. */
+function dateKeyUtc(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+/** Today / Yesterday / Custom filter modes. */
+type FilterMode = 'all' | 'today' | 'yesterday' | 'custom';
+
 function confidenceLabel(c: number): string {
   if (c >= 80) return 'High confidence';
   if (c >= 60) return 'Medium confidence';
@@ -118,12 +128,39 @@ export function Submit() {
   const startedAtRef = useRef<number>(0);
   const resultRef = useRef<HTMLDivElement | null>(null);
 
+  // Recent-submissions filter (client-side — createdAt is already in the payload)
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  const [customDate, setCustomDate] = useState<string>(''); // YYYY-MM-DD
+
   // Recent submissions — pre-populated so the page never feels empty on cold load.
   const mineQuery = useQuery({
     queryKey: submissionKeys.mine(20),
     queryFn: () => getMySubmissions(20),
     staleTime: 30_000,
   });
+
+  // Filtered view — recomputes whenever the filter or upstream data changes.
+  const filteredSubmissions = useMemo(() => {
+    const all = mineQuery.data ?? [];
+    if (filterMode === 'all' || all.length === 0) return all;
+
+    const todayUtc = new Date();
+    const todayKey = todayUtc.toISOString().slice(0, 10);
+    const yesterday = new Date(todayUtc);
+    yesterday.setUTCDate(todayUtc.getUTCDate() - 1);
+    const yesterdayKey = yesterday.toISOString().slice(0, 10);
+
+    return all.filter((s) => {
+      const key = dateKeyUtc(s.createdAt);
+      if (filterMode === 'today') return key === todayKey;
+      if (filterMode === 'yesterday') return key === yesterdayKey;
+      if (filterMode === 'custom') return customDate ? key === customDate : true;
+      return true;
+    });
+  }, [mineQuery.data, filterMode, customDate]);
+
+  const isFiltered = filterMode !== 'all';
+  const totalCount = mineQuery.data?.length ?? 0;
 
   const submitMutation = useMutation({
     mutationFn: submitClaim,
@@ -295,7 +332,7 @@ export function Submit() {
         </AnimatePresence>
 
         <section className="mt-16">
-          <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
+          <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div className="flex flex-col gap-2">
               <p className="flex items-center gap-2 text-label-small font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-foreground" />
@@ -307,18 +344,42 @@ export function Submit() {
             </div>
             {mineQuery.data && (
               <span className="inline-flex items-center gap-2 rounded-pill border-2 border-black bg-card px-3 py-1 text-label-small font-semibold shadow-hard-sm">
-                <span className="font-mono">{mineQuery.data.length}</span>
-                <span className="text-muted-foreground">total</span>
+                <span className="font-mono">{filteredSubmissions.length}</span>
+                <span className="text-muted-foreground">
+                  {isFiltered ? `of ${totalCount}` : 'total'}
+                </span>
               </span>
             )}
           </header>
+
+          {/* Filter chips + custom-date picker */}
+          {totalCount > 0 && (
+            <FilterBar
+              mode={filterMode}
+              onModeChange={(m) => {
+                setFilterMode(m);
+                if (m !== 'custom') setCustomDate('');
+              }}
+              customDate={customDate}
+              onCustomDateChange={setCustomDate}
+            />
+          )}
 
           {mineQuery.isPending ? (
             <RecentSkeleton />
           ) : mineQuery.isError ? (
             <p className="text-label-small text-danger">Couldn't load your submissions.</p>
-          ) : mineQuery.data.length === 0 ? (
+          ) : totalCount === 0 ? (
             <EmptyRecent />
+          ) : filteredSubmissions.length === 0 ? (
+            <FilteredEmpty
+              mode={filterMode}
+              customDate={customDate}
+              onReset={() => {
+                setFilterMode('all');
+                setCustomDate('');
+              }}
+            />
           ) : (
             <motion.ul
               className="flex flex-col gap-5"
@@ -329,7 +390,7 @@ export function Submit() {
                 show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
               }}
             >
-              {mineQuery.data.map((s) => (
+              {filteredSubmissions.map((s) => (
                 <RecentRow key={s.id} submission={s} />
               ))}
             </motion.ul>
@@ -763,6 +824,179 @@ function EmptyRecent() {
         Your past submissions will appear here. Try pasting a headline above —
         each one earns points and sharpens your blind-spot report.
       </p>
+    </div>
+  );
+}
+
+/**
+ * FilterBar — pill chip row for All / Today / Yesterday / Custom. The Custom
+ * chip reveals an inline date picker (animated height + opacity) so the user
+ * can pick any day. Matches the Gumroad aesthetic (2px borders, offset shadow,
+ * hover-lift) and uses EASE cubic-bezier transitions.
+ */
+const FILTER_OPTIONS: { id: FilterMode; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+  { id: 'custom', label: 'Custom' },
+];
+
+function FilterBar({
+  mode,
+  onModeChange,
+  customDate,
+  onCustomDateChange,
+}: {
+  mode: FilterMode;
+  onModeChange: (m: FilterMode) => void;
+  customDate: string;
+  onCustomDateChange: (d: string) => void;
+}) {
+  return (
+    <div className="mb-6">
+      <div
+        role="radiogroup"
+        aria-label="Filter submissions by date"
+        className="flex flex-wrap items-center gap-2"
+      >
+        {FILTER_OPTIONS.map((opt) => {
+          const active = mode === opt.id;
+          return (
+            <motion.button
+              key={opt.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onModeChange(opt.id)}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.2, ease: EASE }}
+              className={[
+                'inline-flex items-center gap-1.5 rounded-pill border-2 border-black px-4 py-1.5 text-label-small font-semibold uppercase tracking-[0.08em]',
+                'transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                active
+                  ? 'bg-foreground text-background shadow-hard'
+                  : 'bg-card text-foreground shadow-hard-sm hover-lift',
+              ].join(' ')}
+            >
+              {opt.id === 'custom' && <CalendarDays size={12} aria-hidden="true" />}
+              {opt.label}
+              {opt.id === 'custom' && customDate && (
+                <span
+                  aria-hidden
+                  className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-current"
+                />
+              )}
+            </motion.button>
+          );
+        })}
+
+        {mode !== 'all' && (
+          <motion.button
+            type="button"
+            onClick={() => {
+              onModeChange('all');
+              onCustomDateChange('');
+            }}
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ duration: 0.3, ease: EASE }}
+            className="inline-flex items-center gap-1 rounded-pill border-2 border-black bg-card px-3 py-1.5 text-label-small font-semibold uppercase tracking-[0.08em] text-foreground shadow-hard-sm hover-lift"
+            aria-label="Clear filter"
+          >
+            <X size={12} aria-hidden="true" />
+            Clear
+          </motion.button>
+        )}
+      </div>
+
+      {/* Inline date picker — slides open when Custom is selected */}
+      <AnimatePresence initial={false}>
+        {mode === 'custom' && (
+          <motion.div
+            key="custom-picker"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border-2 border-black bg-card p-3 shadow-hard-sm">
+              <label
+                htmlFor="custom-date"
+                className="text-label-small font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+              >
+                Pick a date
+              </label>
+              <input
+                id="custom-date"
+                type="date"
+                value={customDate}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => onCustomDateChange(e.target.value)}
+                className="rounded-md border-2 border-black bg-background px-3 py-1.5 font-mono text-body-medium font-medium shadow-hard-sm focus-hard"
+              />
+              {customDate && (
+                <span className="text-label-small text-muted-foreground">
+                  {new Date(`${customDate}T00:00:00Z`).toLocaleDateString(undefined, {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                    timeZone: 'UTC',
+                  })}
+                </span>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * FilteredEmpty — shown when the user has submissions but the current filter
+ * yields zero matches. Distinct from EmptyRecent (which is for "no submissions
+ * at all"); offers a one-click reset to All.
+ */
+function FilteredEmpty({
+  mode,
+  customDate,
+  onReset,
+}: {
+  mode: FilterMode;
+  customDate: string;
+  onReset: () => void;
+}) {
+  let body = 'No submissions for this filter.';
+  if (mode === 'today') body = "You haven't submitted anything today yet.";
+  else if (mode === 'yesterday') body = "Nothing was submitted yesterday.";
+  else if (mode === 'custom' && customDate) {
+    body = `Nothing was submitted on ${new Date(`${customDate}T00:00:00Z`).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })}.`;
+  } else if (mode === 'custom') {
+    body = 'Pick a date above to see what you submitted then.';
+  }
+
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-black bg-card/60 p-8 text-center">
+      <CalendarDays
+        className="mx-auto mb-3 size-7 text-foreground/70"
+        aria-hidden="true"
+      />
+      <p className="text-body text-muted-foreground">{body}</p>
+      <button
+        type="button"
+        onClick={onReset}
+        className="mt-4 inline-flex items-center gap-1.5 rounded-pill border-2 border-black bg-foreground px-4 py-1.5 text-label-small font-semibold uppercase tracking-[0.08em] text-background shadow-hard-sm hover-lift"
+      >
+        Show all submissions
+      </button>
     </div>
   );
 }
