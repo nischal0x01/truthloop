@@ -30,6 +30,10 @@ export interface ForecastItem {
   summary: string;
   recommendedAction: string | null;
   region: string | null;
+  /** Verbatim URL of the <search_results> entry this forecast was grounded in. */
+  sourceUrl: string | null;
+  /** Verbatim title of that entry. */
+  sourceTitle: string | null;
   believeCount: number;
   doubtCount: number;
   skipCount: number;

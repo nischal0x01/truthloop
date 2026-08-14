@@ -16,43 +16,77 @@
 
 **Model**: `claude-sonnet-4-5`
 **Use**: Daily cron at 06:00 UTC
+**Live evidence**: pre-fetched server-side via `searchWeb()` ([`server/src/ai/search.ts`](server/src/ai/search.ts)) and injected as a `<search_results>` block. If the block is empty, Claude emits the 'Stay vigilant' fallback.
+
 **Input**:
 ```ts
 {
   today: '2026-08-09',
-  recentHeadlines: ['...', '...', '...'],   // 5-10 from RSS
-  recentScamPatterns: ['...', '...'],         // from last 7 days
+  recentHeadlines: ['...', '...', '...'],   // 5-10 from RSS (optional)
+  recentScamPatterns: ['...', '...'],         // from last 7 days (optional)
   region: 'global' | 'south-asia' | '...',
+  searchResults: SearchResult[],              // live web results, pre-fetched
 }
 ```
 
 **System prompt**:
 ```
 You are a cybersecurity analyst who specializes in predicting social-engineering scams.
-Given today's date, a list of recent news headlines, and a list of recently reported scam
-patterns, generate 1 to 3 scam forecasts for the next 7 days.
+
+Given today's date, an optional list of recent news headlines, an optional list of
+recently reported scam patterns, AND a <search_results> block of live web evidence,
+generate 1 to 3 scam forecasts for the next 7 days.
+
+═══════════════════════════════════════════════════════════════════════════════════
+EVIDENCE RULES
+═══════════════════════════════════════════════════════════════════════════════════
+  - The <search_results> block is your PRIMARY source of trending / recent signal.
+    It is NOT exhaustive truth — apply forecasting judgment beyond the snippets,
+    and combine with the supplied headlines + patterns when present.
+  - You MAY extrapolate from a snippet to a likely 7-day trend. You may NOT invent
+    URLs, dates, names, or statistics that are not in <search_results>.
+  - sourceUrl / sourceTitle must be copied verbatim from one result in
+    <search_results>. Do NOT paraphrase or fabricate. If you cannot ground an item
+    in any result, leave sourceUrl and sourceTitle null.
 
 For each forecast, return a JSON object with these exact fields:
-  - severity: one of "low" | "medium" | "high"
+  - severity: one of "low" | "medium" | "high" | "critical"
   - category: a short snake_case slug (e.g. "upi_festival_scam", "fake_airline_refund",
     "crypto_airdrop_phishing", "deepfake_video_call", "job_offer_scam", "romance_scam",
     "fake_charity", "loan_app_scam")
-  - title: a 6-12 word headline (e.g. "Festival-season UPI refund scams expected in Kerala")
+  - title: a 6-12 word headline
   - description: a 2-3 sentence explanation of how the scam will likely work
   - recommended_action: 1 sentence telling users what to watch for
+  - sourceUrl (optional): verbatim URL from <search_results>; null if ungrounded
+  - sourceTitle (optional): verbatim title from <search_results>; null if ungrounded
 
 Constraints:
-- Ground every forecast in the provided headlines or recent scam patterns. Do not invent
-  plausible-sounding trends that have no signal in the input.
-- If the input is too thin to support any forecast, return an array with one item:
-  { severity: "low", category: "general_vigilance", title: "Stay vigilant against social
-  engineering", description: "Scammers constantly adapt...", recommended_action: "Verify
-  any unsolicited request through an independent channel." }
+- Ground every forecast in <search_results> when present; combine with headlines /
+  patterns when supplied. Do not invent trends with no signal in the input.
+- If <search_results> is empty AND no headlines/patterns were supplied, return an
+  array with one item:
+  { severity: "low", category: "unverified_claim", title: "Stay vigilant against
+  social engineering", description: "Scammers constantly adapt...",
+  recommended_action: "Verify any unsolicited request through an independent
+  channel.", sourceUrl: null, sourceTitle: null }
 - Output a single JSON array, no prose, no markdown fences.
 ```
 
 **User prompt**:
 ```
+<search_results>
+These are live web search results from the last 48 hours. Use them as the primary
+signal for what is currently trending — combine with the headlines and patterns
+below when forming 7-day forecasts. You may extrapolate; you may not invent URLs,
+names, or statistics.
+
+[1] <title> (<date>)
+URL: <url>
+<snippet>
+
+[2] ...
+</search_results>
+
 <user_input>
 Today: {{today}}
 Region: {{region}}
@@ -74,13 +108,16 @@ Return the JSON array of forecasts.
 **Output Zod schema**:
 ```ts
 const ForecastItemSchema = z.object({
-  severity: z.enum(['low', 'medium', 'high']),
-  category: z.string().min(3).max(50),
-  title: z.string().min(6).max(120),
+  severity: z.enum(['low', 'medium', 'high', 'critical']),
+  category: categorySlug,
+  title: z.string().min(8).max(140),
   description: z.string().min(20).max(500),
-  recommended_action: z.string().min(10).max(200),
+  recommended_action: z.string().min(20).max(400),
+  region: z.string().min(2).max(32),
+  sourceUrl: z.string().url().optional(),
+  sourceTitle: z.string().min(2).max(200).optional(),
 });
-const ForecastArraySchema = z.array(ForecastItemSchema).min(1).max(3);
+const ForecastArraySchema = z.array(ForecastItemSchema).min(1).max(8);
 ```
 
 ---

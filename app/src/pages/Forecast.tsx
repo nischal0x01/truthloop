@@ -26,6 +26,7 @@ import {
   CheckCircle2,
   Sparkles,
   RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
 import { EASE } from '@/lib/motion';
@@ -82,6 +83,11 @@ function dayChipLabel(dateStr: string, isToday: boolean): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+/** Truncate a string to `n` chars, appending an ellipsis when trimmed. */
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
 }
 
 /* ── Page ── */
@@ -176,6 +182,13 @@ export function Forecast() {
                 headlines and the last week of reported scam patterns, then
                 writes the forecasts for the next seven days.
               </p>
+
+              {activeForecast?.generationStatus === 'fallback' && (
+                <span className="mt-3 inline-flex items-center gap-2 self-start rounded-pill border-2 border-black bg-warning px-3 py-1 text-label-small font-semibold text-warning-foreground">
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  Live search unavailable — showing generic vigilance alert
+                </span>
+              )}
             </div>
 
             {/* Live stats card */}
@@ -227,7 +240,7 @@ export function Forecast() {
           <button
             type="button"
             onClick={() => regenerateMutation.mutate()}
-            disabled={regenerateMutation.isPending || !selectedDate}
+            disabled={regenerateMutation.isPending || !!selectedDate}
             className="inline-flex items-center gap-2 rounded-lg border-2 border-black bg-card px-4 py-2 text-label-small font-semibold hover-lift disabled:opacity-50 disabled:cursor-not-allowed"
             title={
               selectedDate
@@ -382,6 +395,19 @@ function ForecastCard({
             </span>{' '}
             {item.recommendedAction}
           </p>
+        )}
+
+        {item.sourceUrl && item.sourceTitle && (
+          <a
+            href={item.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 self-start rounded-pill border-2 border-black bg-card px-3 py-1 text-label-small font-semibold text-foreground hover-lift"
+            title={item.sourceTitle}
+          >
+            <ExternalLink size={12} aria-hidden="true" />
+            Source: {truncate(item.sourceTitle, 48)}
+          </a>
         )}
 
         {/* Vote buttons */}

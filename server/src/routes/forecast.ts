@@ -37,6 +37,7 @@ import {
   generateStructured,
 } from '@/ai';
 import type { ForecastList } from '@/ai';
+import { searchWeb, type SearchResult } from '@/ai/search';
 
 /* ── Setup ──────────────────────────────────────────────────────────── */
 
@@ -68,6 +69,10 @@ export interface ForecastItemOut {
   summary: string;
   recommendedAction: string | null;
   region: string | null;
+  /** Verbatim URL from the <search_results> entry this forecast was grounded in. */
+  sourceUrl: string | null;
+  /** Verbatim title of that entry. */
+  sourceTitle: string | null;
   believeCount: number;
   doubtCount: number;
   skipCount: number;
@@ -92,6 +97,103 @@ function normalizeSeverity(raw: string): SeverityDb {
   if (raw === 'low' || raw === 'medium' || raw === 'high') return raw;
   return 'medium';
 }
+
+/* ── Live web evidence gathering ───────────────────────────────────── */
+
+/**
+ * Build the three themed search queries we run in parallel before each
+ * forecast generation. Interpolation:
+ *   - broad → uses today's ISO date for recency
+ *   - consumer → uses the long month name (consumer-protection warnings cluster by month)
+ *   - emerging → uses the current year (deepfake / voice-clone stories don't cluster by date)
+ */
+const FORECAST_QUERY_BUILDER = (today: string) => {
+  const monthName = new Date(`${today}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  return {
+    broad: `trending scam ${today}`,
+    consumer: `phishing fraud alert this week ${monthName}`,
+    emerging: `deepfake voice clone impersonation scam ${today.slice(0, 4)}`,
+  };
+};
+
+/**
+ * Normalize a URL for dedup: lowercase host, strip trailing slash, drop common
+ * tracking params. We intentionally keep the path so different articles on the
+ * same domain remain distinct.
+ */
+export function normalizeUrl(u: string): string {
+  try {
+    const parsed = new URL(u);
+    parsed.hostname = parsed.hostname.toLowerCase();
+    if (parsed.pathname.length > 1 && parsed.pathname.endsWith('/')) {
+      parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+    }
+    const drop = /^(utm_|fbclid|gclid|ref$)/i;
+    for (const k of Array.from(parsed.searchParams.keys())) {
+      if (drop.test(k)) parsed.searchParams.delete(k);
+    }
+    return parsed.toString();
+  } catch {
+    return u;
+  }
+}
+
+/**
+ * Run three themed `searchWeb()` calls in parallel via `Promise.allSettled`,
+ * dedupe by normalized URL, sort newest-first when dates are present, and
+ * slice to a 12-result ceiling (well above the 1–3 items we generate).
+ *
+ * Resilience: `searchWeb` never throws (returns `[]` on failure — see
+ * `server/src/ai/search.ts:24-28`), so a single MiniMax timeout or quota
+ * hit only loses that one query's contributions. The empty array returned
+ * to the prompt triggers the explicit '(no live evidence found)' block and
+ * the 'Stay vigilant' fallback item.
+ */
+export async function gatherForecastEvidence(
+  today: string
+): Promise<SearchResult[]> {
+  const q = FORECAST_QUERY_BUILDER(today);
+  const settled = await Promise.allSettled([
+    searchWeb(q.broad, { maxResults: 5 }),
+    searchWeb(q.consumer, { maxResults: 5 }),
+    searchWeb(q.emerging, { maxResults: 5 }),
+  ]);
+
+  const flat: SearchResult[] = [];
+  for (const r of settled) {
+    if (r.status === 'fulfilled') flat.push(...r.value);
+  }
+
+  // Dedup by normalized URL; keep the richer snippet on collision.
+  const seen = new Map<string, SearchResult>();
+  for (const r of flat) {
+    const key = normalizeUrl(r.url);
+    const prev = seen.get(key);
+    if (!prev || r.content.length > prev.content.length) {
+      seen.set(key, { ...r, url: key });
+    }
+  }
+
+  // Dated first, newest-first; then insertion order.
+  return Array.from(seen.values())
+    .sort((a, b) => {
+      if (a.date && b.date) return b.date.localeCompare(a.date);
+      if (a.date) return -1;
+      if (b.date) return 1;
+      return 0;
+    })
+    .slice(0, 12);
+}
+
+/* ── Regeneration cooldown ─────────────────────────────────────────── */
+
+/** Per-user cooldown for `POST /api/forecast/generate`. In-memory; resets on restart. */
+const REGEN_COOLDOWN_MS = 5 * 60 * 1000;
+const _lastRegen = new Map<string, number>();
 
 /* ── Query helpers ─────────────────────────────────────────────────── */
 
@@ -118,6 +220,8 @@ async function fetchForecastForDate(
       title: schema.scamForecastItems.title,
       description: schema.scamForecastItems.description,
       recommendedAction: schema.scamForecastItems.recommendedAction,
+      sourceUrl: schema.scamForecastItems.sourceUrl,
+      sourceTitle: schema.scamForecastItems.sourceTitle,
       believeCount: schema.scamForecastItems.believeCount,
       doubtCount: schema.scamForecastItems.doubtCount,
       skipCount: schema.scamForecastItems.skipCount,
@@ -155,6 +259,8 @@ async function fetchForecastForDate(
       summary: r.description,
       recommendedAction: r.recommendedAction,
       region: null,
+      sourceUrl: r.sourceUrl,
+      sourceTitle: r.sourceTitle,
       believeCount: r.believeCount,
       doubtCount: r.doubtCount,
       skipCount: r.skipCount,
@@ -170,11 +276,17 @@ async function fetchForecastForDate(
  * fall through to `forecastFallback` (already a typed `ForecastList`).
  */
 async function generateAndPersistForecast(date: string): Promise<ForecastOut> {
+  // 1. Gather live web evidence via three themed searches (runs before the
+  //    prompt build so we can attach it; on total failure `searchResults` is
+  //    `[]` and the prompt emits the '(no live evidence found)' block).
+  const searchResults = await gatherForecastEvidence(date);
+
   const { system, prompt, userInput } = buildScamForecastPrompt({
     today: date,
     recentHeadlines: [],
     recentScamPatterns: [],
     region: 'GLOBAL',
+    searchResults,
   });
 
   // generateStructured never throws on parse failure (returns fallback), so the
@@ -186,6 +298,17 @@ async function generateAndPersistForecast(date: string): Promise<ForecastOut> {
     schema: forecastListSchema,
     fallback: forecastFallback,
   });
+
+  // 2. Hallucination guard — strip any `sourceUrl` / `sourceTitle` Claude
+  //    returned that isn't actually present in the gathered search results.
+  //    Enforces the "must be copied verbatim from <search_results>" rule.
+  const allowedUrls = new Set(searchResults.map((r) => normalizeUrl(r.url)));
+  for (const it of aiResult.items) {
+    if (it.sourceUrl && !allowedUrls.has(normalizeUrl(it.sourceUrl))) {
+      it.sourceUrl = undefined;
+      it.sourceTitle = undefined;
+    }
+  }
 
   // Mark as fallback when the model's output matches the typed default — a cheap
   // reference check on the array contents. `forecastFallback` is a module-level
@@ -226,6 +349,8 @@ async function generateAndPersistForecast(date: string): Promise<ForecastOut> {
         title: it.title,
         description: it.summary,
         recommendedAction: it.pattern,
+        sourceUrl: it.sourceUrl ?? null,
+        sourceTitle: it.sourceTitle ?? null,
       }))
     );
   }
@@ -288,10 +413,25 @@ router.get('/history', async (req, res) => {
 /* ── POST /api/forecast/generate ─────────────────────────────────────── */
 
 router.post('/generate', requireAuth, async (req, res) => {
+  const userId = (req.user as { id: string }).id;
+
+  // Per-user cooldown to protect MiniMax's token-plan quota. In-memory; resets
+  // on server restart. Acceptable for the 48h demo; swap for Redis/DB in prod.
+  const now = Date.now();
+  const last = _lastRegen.get(userId) ?? 0;
+  if (now - last < REGEN_COOLDOWN_MS) {
+    const retryAfter = Math.ceil((REGEN_COOLDOWN_MS - (now - last)) / 1000);
+    res.status(429).json({
+      error: `Please wait ${retryAfter}s before regenerating again.`,
+      retryAfter,
+    });
+    return;
+  }
+  _lastRegen.set(userId, now);
+
   const date = todayUtc();
   const forecast = await generateAndPersistForecast(date);
   // Re-fetch with the caller's votes so the response is immediately renderable.
-  const userId = (req.user as { id: string }).id;
   const withVotes = await fetchForecastForDate(date, userId);
   res.json({ forecast: withVotes ?? forecast });
 });

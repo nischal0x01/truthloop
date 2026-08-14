@@ -48,6 +48,10 @@ export const forecastItemSchema = z.object({
   region: z.string().min(2).max(32),
   pattern: z.string().min(20).max(400),
   sourceHint: z.string().min(2).max(120).optional(),
+  /** Verbatim URL of the <search_results> entry this forecast was grounded in. */
+  sourceUrl: z.string().url().optional(),
+  /** Verbatim title of that entry. */
+  sourceTitle: z.string().min(2).max(200).optional(),
 });
 export type ForecastItem = z.infer<typeof forecastItemSchema>;
 
@@ -59,6 +63,8 @@ export type ForecastList = z.infer<typeof forecastListSchema>;
 
 export const forecastFallback: ForecastList = {
   generatedForDate: new Date().toISOString().slice(0, 10),
+  // sourceUrl / sourceTitle intentionally omitted — fallback fires when search is
+  // unavailable AND Claude is down, so there's no grounded article to cite.
   items: [
     {
       title: 'Coordinated outage hoax on a popular payment app',

@@ -37,6 +37,8 @@ export const scamForecastItems = pgTable(
     title: text('title').notNull(),
     description: text('description').notNull(),
     recommendedAction: text('recommended_action'),
+    sourceUrl: text('source_url'),
+    sourceTitle: text('source_title'),
     believeCount: integer('believe_count').notNull().default(0),
     doubtCount: integer('doubt_count').notNull().default(0),
     skipCount: integer('skip_count').notNull().default(0),
