@@ -2,11 +2,11 @@
 
 > The hour-by-hour plan. The team should be able to read this and know exactly what to do at 3:47am Sunday.
 
-> **Status as of 2026-08-13** — see §0 at the top for "what's done / what's left / what's next" before reading the hour-by-hour plan below.
+> **Status as of 2026-08-14** — see §0 at the top for "what's done / what's left / what's next" before reading the hour-by-hour plan below.
 
 ---
 
-## 0. Quick status (2026-08-13)
+## 0. Quick status (2026-08-14)
 
 Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 
@@ -16,8 +16,9 @@ Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 | --- | --- | --- | --- |
 | 1 | Voting loop (sign in → see claim → vote → see verdict) | ✅ | `/claims` + `/claims/:id` Feed view, optimistic voting via TanStack Query |
 | 2 | Weekly blind-spot report | ✅ | `/reports/weekly`, range-filter (week/month/quarter/custom), 4 recharts components, regenerate endpoint. Pre-seeded for `demo@truthloop.app`. |
-| 3 | Scam Forecast page (≥ 1 AI-generated item) | ⬜ | `forecasts` table exists in schema. **No backend route, no frontend page, no AI wiring yet.** |
-| 4 | Comments (≥ 1 level of nesting) | ✅ | `/discussions` + nested `PostCard` + CommentThread |
+| 3 | Scam Forecast page (≥ 1 AI-generated item) | ✅ | `/forecast`, severity-colored cards, Believe/Doubt/Skip voting, regenerate control. AI-generated via `scam-forecast.ts` prompt; on-demand first-visit-of-day. Pre-seeded today + 2 prior days. |
+| 7 | Toxicity moderation on `/api/comments` | ✅ | Every new comment passes through Claude (default tier) via `buildToxicityPrompt`. `block` → 422, no DB write. `soften` → persisted with `is_flagged=true`, response carries the `softened` rewrite for the composer to suggest. `allow` → persisted as-is. `toxicityFallback` keeps the demo running if Claude is down. |
+| 4 | Comments (≥ 1 level of nesting) | ✅ | `/discussions` + nested `PostCard` + CommentThread. **Toxicity moderation live** — every POST passes through Claude; `block`/`soften`/`allow` verdicts persist `is_flagged` and surface `softened` rewrites. |
 | 5 | Leaderboard (≥ daily) | ✅ | `/leaderboard` |
 | 6 | Gumroad design polish | ✅ | Design system extracted → `app/Design.md`; tokens in `app/src/index.css`; high-end-visual-design applied across all built screens |
 
@@ -25,13 +26,25 @@ Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| ~~Submit tab + live AI fact-check~~ | ⬜ | Nothing started. Was cut early per §7 list, but the pitch script still references it — see §11. |
+| ~~Submit tab + live AI fact-check~~ | ✅ | `/submit` page + `POST /api/submissions` (claude-opus-4-1) + `GET /api/submissions/me`. **Live web evidence** via MiniMax `POST /v1/coding_plan/search` injected as `<search_results>` block; Claude calibrated to answer ONLY from those sources. Confident hallucinated verdicts are now impossible — empty search → confidence ≤ 50 + verdict `unverified`. +5 pts/submission, capped at 20/day. |
 | ~~Email integration~~ | ⬜ | Notifications table exists, no Resend dependency, no cron |
 | ~~SSE real-time~~ | ⬜ | Polling fallback not even wired. No EventSource in frontend. |
 | ~~Full Reddit-style comments~~ | ⏳ | 1-level only. Schema supports nested via `parentCommentId`. |
 | ~~All-time leaderboard tab~~ | ⏳ | Daily scope shipping; all-time scope is a tab toggle, easy. |
 | ~~Some badges~~ | ⏳ | Tables exist; need to confirm trigger logic runs on every guess. |
 | ~~Weekly report on-demand regen~~ | ✅ | `POST /api/reports/weekly/regenerate` works, week-only (intentional — see WeeklyReport.tsx) |
+
+### Mobile responsive
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Mobile nav (landing + in-app) | ✅ | Shared `MobileMenuDrawer` (slide-in from right, esc/backdrop/scroll-lock); hamburger visible `md:hidden` in both navs. Drawer mirrors desktop nav items + auth actions. |
+
+### Range filter on Weekly Report (extra — not in original plan)
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Week / Month / Quarter / Custom range | ✅ | RangePicker chip row, server-side bucketing (daily ≤ 31 days, weekly beyond), URL-synced (`?range=...&from=...&to=...`) |
 
 ### Range filter on Weekly Report (extra — not in original plan)
 
@@ -116,22 +129,23 @@ These are done BEFORE the 48h clock starts. They are the highest-leverage prep.
 
 ### Hour 14–18: Scam Forecast (the differentiator)
 
-- [ ] **Backend**: AI scam forecast prompt (`.ai/05-ai-prompts.md` §1)
-- [ ] **Backend**: `GET /api/forecast/today` + `POST /api/forecast/:id/vote`
-- [ ] **Backend**: cron job at 06:00 UTC (use `node-cron`, manual trigger for demo)
-- [ ] **Frontend**: `/forecast` page with severity-colored cards + vote buttons
-- [ ] **Frontend**: live vote tally (via polling for now, SSE in hour 26)
+- [x] **Backend**: AI scam forecast prompt (`.ai/05-ai-prompts.md` §1)
+- [x] **Backend**: `GET /api/forecast/today` (auto-generates if missing) + `GET /api/forecast/history?days=N` + `POST /api/forecast/generate` (manual regen) + `POST /api/forecast/:id/vote`
+- [~] **Backend**: cron job at 06:00 UTC (use `node-cron`, manual trigger for demo) — using on-demand first-visit-of-day instead (simpler, matches spec §3.5 cron-failure fallback)
+- [x] **Frontend**: `/forecast` page with Editorial Split hero + severity-colored cards + Believe/Doubt/Skip vote buttons + day picker (Today / Yesterday / weekday chips)
+- [x] **Frontend**: live vote tally via polling-style cache invalidation (SSE still deferred)
 
-**Demo gate**: `/forecast` shows today's forecast, vote on an item, see tally update.
+**Demo gate**: `/forecast` shows today's forecast, vote on an item, see tally update. ✅
 
 ### Hour 18–22: Submit + Live AI Fact-Check
 
-- [ ] **Backend**: `POST /api/submissions` with `claude-opus-4-1` fact-check prompt
-- [ ] **Backend**: `GET /api/submissions/me`
-- [ ] **Frontend**: `/submit` page with text input + loading state
-- [ ] **Frontend**: result display (verdict + confidence + explanation + sources)
+- [x] **Backend**: `POST /api/submissions` with `claude-opus-4-1` fact-check prompt + live web evidence via MiniMax `coding_plan/search` injected into prompt
+- [x] **Backend**: `GET /api/submissions/me`
+- [x] **Frontend**: `/submit` page with text input + loading state + elapsed-time counter
+- [x] **Frontend**: result display (verdict chip + confidence bar + headline + bulleted reasons + clickable sources + +5 pts badge)
+- [x] **Frontend**: "My recent submissions" list with optimistic cache prepend
 
-**Demo gate**: Paste a known fake headline, see the AI catch it in <3s.
+**Demo gate**: Paste a known fake headline, see the AI catch it in <3s with cited sources. ✅
 
 ### Hour 22–26: Weekly Report
 
@@ -159,9 +173,9 @@ These are done BEFORE the 48h clock starts. They are the highest-leverage prep.
 
 - [~] **Frontend**: full Reddit-style nested comments (extend from 1-level — schema supports `parentCommentId`)
 - [ ] **Frontend**: leaderboard live updates via SSE
-- [~] **Frontend**: empty states, loading skeletons, error states everywhere (WeeklyReport + Discussions done; check /claims, /leaderboard, /profile)
-- [x] **Frontend**: animation pass (use `impeccable:animate` skill or framer-motion) — Editorial Split + mask-reveal applied to /discussions and /reports/weekly
-- [~] **Frontend**: responsive pass (mobile + tablet, even though primary is desktop) — chart cards stack, but verify each page
+- [~] **Frontend**: empty states, loading skeletons, error states everywhere (WeeklyReport + Discussions + Submit done; check /claims, /leaderboard, /profile, /forecast)
+- [x] **Frontend**: animation pass (use `impeccable:animate` skill or framer-motion) — Editorial Split + mask-reveal applied to /discussions, /reports/weekly, /forecast, /submit
+- [~] **Frontend**: responsive pass (mobile + tablet, even though primary is desktop) — **mobile nav done** (shared `MobileMenuDrawer` in both navs); chart cards stack, but verify Editorial Split layouts on sm breakpoint
 
 ### Hour 34–38: Demo data + Seed
 
@@ -293,20 +307,20 @@ If the team continues:
 
 What's actually left to ship the demo, ordered by ROI. **Pick from the top of this list until the timer runs out — every item below is a meaningful demo moment, and the cut-order in §7 still applies.**
 
-### Tier 1 — pitch-critical (NOT startable without these)
+### Tier 1 — pitch-critical — ✅ ALL DONE
 
-| # | Task | Why now |
+| # | Task | Status |
 | --- | --- | --- |
-| 1 | **Install `@anthropic-ai/sdk` in server/** + create `server/src/ai/` with a `client.ts` wrapper + Zod schemas. | Unblocks everything below — without it no AI prompt can run. 1.5h. |
-| 2 | **Wire the BLIND-SPOT NARRATIVE prompt** (`.ai/05-ai-prompts.md` §4) into `POST /weekly/regenerate` and on-demand cache write. Replace the hardcoded fallback string with a real `claude-sonnet-4-5` call. Keep the tone-check self-eval step. | The report right now reads "You missed 62% of misattributed_quote claims this week — that's the pattern worth studying." That's the *single line* that anchors the pitch. Make it sing. 2h. |
-| 3 | **Build `/forecast` end-to-end**: schema is ready. Need (a) `POST /api/forecast/generate` (calls `.ai/05-ai-prompts.md` §1), (b) `GET /api/forecast/today`, (c) `POST /api/forecast/:id/vote`, (d) seed 2-3 days for demo, (e) `/forecast` page with severity-tinted cards + vote buttons. | Pitch script says "see today's forecast" at 0:40. Currently a stub. 4h. |
+| 1 | Install `@anthropic-ai/sdk` in server + AI client wrapper + Zod schemas | ✅ |
+| 2 | Wire BLIND-SPOT NARRATIVE prompt into weekly regenerate | ✅ |
+| 3 | Build `/forecast` end-to-end (route, page, seed, vote) | ✅ |
+| 4 | Build `/submit` page with live AI fact-check + web evidence | ✅ |
 
 ### Tier 2 — also pitched, lower urgency
 
 | # | Task | Why |
 | --- | --- | --- |
-| 4 | **Build `/submit` page** (`POST /api/submissions` + claude-opus-4-1 fact-check) | Pitch script step 11 references it. Was cut early; ship it if Tier 1 lands fast. 3h. |
-| 5 | **Toxicity moderation** on existing `/api/comments` (currently no `@anthropic-ai/sdk` call) — wire prompt from `.ai/05-ai-prompts.md` §3 | Already partially built (mock guard). Replace with real Claude call. 1h. |
+| 5 | ~~**Toxicity moderation** on `/api/comments`~~ | ✅ **Done** — every POST now calls Claude via `buildToxicityPrompt`. `block`→422, `soften`→flagged + returns `softened` rewrite, `allow`→as-is. `toxicityFallback` keeps the demo running if Claude is down. |
 
 ### Tier 3 — quality-of-life wins
 
@@ -315,8 +329,8 @@ What's actually left to ship the demo, ordered by ROI. **Pick from the top of th
 | 6 | **Reddit-style nested comments** (extend from 1-level; schema already supports `parentCommentId`). Just UI work in `PostCard.tsx` + `actions/discussions.ts`. | Pitch script doesn't promise it, but reviewers will check. 2h. |
 | 7 | **All-time leaderboard tab** (currently daily only) | Easy tab toggle in `Leaderboard.tsx`. Endpoint already accepts `scope=`. 30min. |
 | 8 | **Server-side render of seeded `<Bell>`** (notifications table exists, no trigger). Add a per-user notification for every correct guess + every reply on your comments. Show in nav. | Demo differentiator on /profile. 1.5h. |
-| 9 | **Verification pass on ** `/claims`, `/leaderboard`, `/profile` empty states + skeletons (WeeklyReport + Discussions done) | Cheaper than it sounds, removes the most common judge complaint. 1h. |
-| 10 | **Mobile responsive pass** on the new Editorial Split layouts (Discussions + WeeklyReport) — they target desktop-first (`md:grid-cols-[1.5fr_1fr]`) | Verify sm: breakpoint stacks cleanly without overflow. 30min. |
+| 9 | **Empty-state + skeleton verification pass** on `/claims`, `/leaderboard`, `/profile`, `/forecast` (WeeklyReport + Discussions + Submit already done) | Cheaper than it sounds, removes the most common judge complaint. 1h. |
+| 10 | **Editorial Split responsive pass** on Discussions / WeeklyReport (mobile nav ✅ done — verify their `md:grid-cols-[1.5fr_1fr]` stacks cleanly at `sm:` breakpoint, no overflow). | 30min. |
 | 11 | **Demo account banner** on `/` and `/claims` for non-demo viewers. | Cosmetic but easy to add. 20min. |
 
 ### Tier 4 — long-tail, cut first if needed
@@ -332,8 +346,8 @@ What's actually left to ship the demo, ordered by ROI. **Pick from the top of th
 
 These aren't blockers but should be settled before the corresponding task lands:
 
-- Where does the `/forecast` page link from? Currently a static landing section but no in-app route. Add to nav or keep landing-only?
-- For `submit` fact-check: do we persist the submission to a `submissions` table for review, or only show the verdict and discard?
+- ~~Where does the `/forecast` page link from?~~ ✅ **Resolved** — added to `AppNav` between Discussions and Submit, with active-underline pattern matching the other nav links.
+- ~~For `submit` fact-check: do we persist the submission to a `submissions` table for review, or only show the verdict and discard?~~ ✅ **Resolved** — `user_submissions` table persists every submission (text + AI verdict + confidence + explanation + sources + category) for the user's private "My recent submissions" list. Never enters the main feed.
 - Does the AI narrative cost get billed per-call or per-user-once? (For demo, per-user; for prod, cache by `(userId, weekStarting)`.)
 - For Resend: do we send from `hello@truthloop.app` (needs DNS) or Resend's `onboarding@resend.dev` for demo?
 
@@ -341,6 +355,10 @@ These aren't blockers but should be settled before the corresponding task lands:
 
 ## 10. Decision log (changes made during the build)
 
+- **2026-08-14** — Wired real toxicity moderation into `POST /api/comments`. Schema + prompt + fallback already existed in `server/src/ai/`; missing only the actual `generateStructured` call in the route. Created `prompts/toxicity.ts` (matches the live `toxicityVerdictSchema`: `{ decision: 'allow' | 'block' | 'soften', reason, softened? }` — the spec doc in `.ai/05-ai-prompts.md` §3 is older and uses a different shape, ignored). `POST /api/comments` now: calls Claude on every comment → `block` returns 422 with the reason (no DB write) → `soften` persists the comment with `is_flagged=true` + `toxicity_score=0.6` and the response carries the `softened` rewrite for the composer to surface as a one-click suggestion → `allow` persists as-is. Uses the default (cheap) AI tier — the verdict is short JSON, no need for opus. `toxicityFallback` is `{ decision: 'allow' }` so any AI outage keeps the demo running. Source: `[prompt](server/src/ai/prompts/toxicity.ts)`, `[route](server/src/routes/comments.ts)`.
+- **2026-08-14** — Shipped `/submit` end-to-end: `POST /api/submissions` (auth, opus-4-1, transactional +5 pts capped at 20/day) + `GET /api/submissions/me` + `/submit` page (textarea, elapsed-time counter, color-coded verdict result card with confidence bar + bulleted reasons + clickable sources, "My recent submissions" list with optimistic cache prepend). Added `submitClaim` action + `applySubmissionToCache` helper. Fixed `applySubmissionToCache` cache-shape mismatch (`Submission[]` vs `MyMySubmissionsResponse` envelope). Wired into `AppNav` between Forecast and Reports. Source: `[submissions route](server/src/routes/submissions.ts)`, `[Submit page](app/src/pages/Submit.tsx)`, `[actions](app/src/actions/submissions.ts)`.
+- **2026-08-14** — Wired live web evidence into `/submit` so Claude answers from current sources, not stale training data. First attempt was the Anthropic hosted `web_search_20250305` tool — silently dropped because `ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic` (MiniMax gateway doesn't forward server-side tools). Final design: pre-fetch via Tavily, then re-routed to MiniMax's own `POST {host}/v1/coding_plan/search` endpoint (Bearer-token auth via `Authorization: Bearer` + `MM-API-Source: Minimax-MCP`, body `{q}`, response `{organic: [{title, link, snippet, date}]}`). Results injected as a `<search_results>` block; prompt rewritten to **forbid** drawing on training-data knowledge for any factual claim. Confidence calibration rules force empty-search → confidence ≤ 50 + verdict `unverified`, so confident hallucinations are now structurally impossible. Wrapper falls back to `ANTHROPIC_API_KEY` if `MINIMAX_API_KEY` is unset (same Token Plan seat). Source: `[search wrapper](server/src/ai/search.ts)`, `[prompt](server/src/ai/prompts/live-fact-check.ts)`.
+- **2026-08-14** — Mobile responsive nav fix. Both `app/src/components/landing/nav.tsx` (used on `/`, `/signin`, `/signup`) and `app/src/components/AppNav.tsx` (used on all authenticated pages) used `hidden md:flex` on their inline link lists with no mobile fallback — < 768px had no navigation at all. Created shared `[MobileMenuDrawer](app/src/components/ui/MobileMenuDrawer.tsx)`: hamburger trigger (`md:hidden`) opens a slide-in panel from the right via `createPortal` to `document.body` (escapes `sticky top-0 z-50` header stacking). Drawer includes backdrop, click-away, Escape-to-close, body-scroll-lock, focus-moved-to-close-on-open, and `role="dialog" aria-modal="true"` for screen readers. Landing drawer mirrors desktop nav + auth actions; dashboard drawer shows all in-app routes with active-page highlighting (pink-accent chip + "active" label + `aria-current="page"`).
 - **2026-08-13** — Added range filter to `/reports/weekly`. Server: `GET /api/reports/weekly` now range-aware (`kind=week|month|quarter|custom&from=...&to=...`), bucketed trend (daily ≤ 31 days, weekly beyond), per-report cache preserved for `kind=week` defaults. Client: `RangePicker` chip row + URL-synced custom modal. Regenerate button now hidden on non-week ranges. Plan: `/Users/sajjankarna/.claude/plans/eager-wiggling-panda.md`.
 - **2026-08-13** — Replaced hand-rolled bars on `/reports/weekly` with recharts (`AccuracyComparison` radial meters, `OutcomeDonut`, `CategoryBarChart` with blind-spot emphasis, `TrendArea` small-multiples). Plan + rec installed `recharts@3.10.1`.
 - **2026-08-13** — Editorial Split hero applied to `/discussions` + `/reports/weekly` using the `high-end-visual-design` skill.

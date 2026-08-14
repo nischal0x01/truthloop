@@ -70,3 +70,4 @@ export {
 } from './prompts/prescription';
 export { buildScamForecastPrompt } from './prompts/scam-forecast';
 export { buildLiveFactCheckPrompt } from './prompts/live-fact-check';
+export { buildToxicityPrompt } from './prompts/toxicity';

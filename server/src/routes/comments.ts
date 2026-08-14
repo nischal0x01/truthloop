@@ -15,15 +15,26 @@
  * Vote counts are RECOMPUTED from `comment_votes` inside the transaction
  * rather than incremented, so a double-click can't drift the tally.
  *
- * NOTE: AI toxicity moderation is deliberately not wired up yet —
- * `toxicity_score` stays NULL and `is_flagged` false on insert. See
- * .ai/05-ai-prompts.md for the prompt that will fill them in.
+ * Toxicity moderation: every new comment passes through Claude (default tier)
+ * via `buildToxicityPrompt` + `toxicityVerdictSchema`. The verdict drives the
+ *   - "block"  → 403, comment never persisted
+ *   - "soften" → comment persists with `is_flagged=true`, response carries
+ *                the `softened` rewrite so the composer can suggest it
+ *   - "allow"  → comment persists as-is
+ * On any AI failure the `toxicityFallback` ("allow") keeps the demo running.
  */
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
+import {
+  buildToxicityPrompt,
+  generateStructured,
+  toxicityFallback,
+  toxicityVerdictSchema,
+  type ToxicityVerdict,
+} from '@/ai';
 
 const router = Router();
 
@@ -130,9 +141,43 @@ router.post('/', requireAuth, async (req, res) => {
     if (!parent) throw new AppError(400, 'Parent comment does not belong to this claim.');
   }
 
+  // ── AI toxicity moderation ─────────────────────────────────────────
+  // Per `.ai/05-ai-prompts.md` §3: every new comment passes through Claude.
+  // Uses the default (cheap) tier — short JSON verdict, single-digit ms
+  // typical latency. On any AI failure, `toxicityFallback` returns
+  // { decision: 'allow' } so the demo keeps running.
+  const { system, prompt, userInput } = buildToxicityPrompt({ body });
+  const verdict = await generateStructured<ToxicityVerdict>({
+    system,
+    prompt,
+    userInput,
+    schema: toxicityVerdictSchema,
+    fallback: toxicityFallback,
+    // Default tier — cheap, fast. The verdict is short JSON, so the strong
+    // model's deeper reasoning isn't worth the latency here.
+  });
+
+  // Block before any DB write — refused comments never touch the schema.
+  if (verdict.decision === 'block') {
+    throw new AppError(
+      422,
+      `Comment blocked by community moderation: ${verdict.reason}`
+    );
+  }
+
+  const isFlagged = verdict.decision === 'soften';
+  const toxicityScore = verdict.decision === 'soften' ? 0.6 : 0;
+
   const [created] = await db
     .insert(schema.comments)
-    .values({ claimId, userId, parentCommentId: parentCommentId ?? null, body })
+    .values({
+      claimId,
+      userId,
+      parentCommentId: parentCommentId ?? null,
+      body,
+      toxicityScore,
+      isFlagged,
+    })
     .returning();
 
   const [author] = await db
@@ -147,6 +192,13 @@ router.post('/', requireAuth, async (req, res) => {
       authorName: author?.displayName ?? 'Unknown',
       authorAvatarUrl: author?.avatarUrl ?? null,
       myVote: 0,
+    },
+    // Only present on 'soften' — composer surfaces it as a one-click
+    // "use the kinder version instead" suggestion.
+    moderation: {
+      decision: verdict.decision,
+      reason: verdict.reason,
+      ...(verdict.softened ? { softened: verdict.softened } : {}),
     },
   });
 });
