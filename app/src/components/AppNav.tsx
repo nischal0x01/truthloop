@@ -48,6 +48,9 @@ const PRIMARY_NAV: NavItem[] = [
     to: '/claims',
     label: 'Claims',
     icon: <ListChecks size={14} aria-hidden="true" strokeWidth={2.4} />,
+    // Treat /claims/:id as still being on the Claims surface — keeps
+    // the nav pill active when the user opens a claim in the detail panel.
+    match: (p) => p === '/claims' || p.startsWith('/claims/'),
   },
   {
     to: '/forecast',

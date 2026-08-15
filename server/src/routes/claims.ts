@@ -56,8 +56,37 @@ router.get('/', async (req, res) => {
   if (from) conditions.push(gte(schema.claims.publishedAt, new Date(`${from}T00:00:00Z`)));
   if (to) conditions.push(lt(schema.claims.publishedAt, new Date(`${to}T00:00:00Z`)));
 
+  // Hydrate realCount / fakeCount via correlated subqueries. Cheaper than
+  // a separate group-by round-trip and keeps the list endpoint to a single
+  // query. The `FILTER` clause is what Postgres gives us instead of CASE.
+  const realCount = sql<number>`(
+    SELECT COUNT(*)::int FROM ${schema.guesses}
+    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
+      AND ${schema.guesses.userAnswer} = 'real'
+  )`;
+  const fakeCount = sql<number>`(
+    SELECT COUNT(*)::int FROM ${schema.guesses}
+    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
+      AND ${schema.guesses.userAnswer} = 'fake'
+  )`;
+
   const rows = await db
-    .select()
+    .select({
+      id: schema.claims.id,
+      text: schema.claims.text,
+      verdict: schema.claims.verdict,
+      category: schema.claims.category,
+      explanation: schema.claims.explanation,
+      sourceUrl: schema.claims.sourceUrl,
+      isPublished: schema.claims.isPublished,
+      publishedAt: schema.claims.publishedAt,
+      trendingScore: schema.claims.trendingScore,
+      voteCount: schema.claims.voteCount,
+      origin: schema.claims.origin,
+      createdAt: schema.claims.createdAt,
+      realCount,
+      fakeCount,
+    })
     .from(schema.claims)
     .where(and(...conditions))
     .orderBy(desc(schema.claims.publishedAt), desc(schema.claims.createdAt));
@@ -102,8 +131,36 @@ router.get('/me/guesses', requireAuth, async (req, res) => {
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
 
+  // Same hydration as the list endpoint — keep the two in lockstep so the
+  // detail panel and the card show identical tallies.
+  const realCount = sql<number>`(
+    SELECT COUNT(*)::int FROM ${schema.guesses}
+    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
+      AND ${schema.guesses.userAnswer} = 'real'
+  )`;
+  const fakeCount = sql<number>`(
+    SELECT COUNT(*)::int FROM ${schema.guesses}
+    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
+      AND ${schema.guesses.userAnswer} = 'fake'
+  )`;
+
   const [claim] = await db
-    .select()
+    .select({
+      id: schema.claims.id,
+      text: schema.claims.text,
+      verdict: schema.claims.verdict,
+      category: schema.claims.category,
+      explanation: schema.claims.explanation,
+      sourceUrl: schema.claims.sourceUrl,
+      isPublished: schema.claims.isPublished,
+      publishedAt: schema.claims.publishedAt,
+      trendingScore: schema.claims.trendingScore,
+      voteCount: schema.claims.voteCount,
+      origin: schema.claims.origin,
+      createdAt: schema.claims.createdAt,
+      realCount,
+      fakeCount,
+    })
     .from(schema.claims)
     .where(eq(schema.claims.id, id))
     .limit(1);
