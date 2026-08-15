@@ -20,7 +20,7 @@
  * until a streak-update hook is added (separate task).
  */
 
-import { sql, and, eq } from 'drizzle-orm';
+import { sql, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '@/db';
 import type { Badge } from '@/db/schema/gamification';
 
@@ -121,7 +121,7 @@ export async function evaluateBadges(userId: string): Promise<NewlyEarnedBadge[]
   const definitions = await db
     .select()
     .from(schema.badges)
-    .where(sql`${schema.badges.slug} = ANY(${slugs})`);
+    .where(inArray(schema.badges.slug, slugs));
 
   const bySlug = new Map<string, Badge>(definitions.map((b) => [b.slug, b]));
 
