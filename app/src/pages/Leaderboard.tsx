@@ -393,13 +393,21 @@ function SectionHeading({
 
 /* ── Helpers ── */
 
-/** "resets in 4h" — rounds to the next whole hour. */
+/**
+ * "resets in 18h" — counts down to the next UTC midnight (the daily board's
+ * actual reset boundary). Shows minutes when <1h remains so it doesn't read
+ * "0h" right before the rollover.
+ */
 function resetCountdown(): string {
   const now = new Date();
-  const next = new Date(now);
-  next.setUTCHours(now.getUTCHours() + 1, 0, 0, 0);
-  const hours = Math.round((next.getTime() - now.getTime()) / (60 * 60 * 1000));
-  return `${hours}h`;
+  const nextMidnight = new Date(now);
+  nextMidnight.setUTCHours(24, 0, 0, 0);
+  const ms = nextMidnight.getTime() - now.getTime();
+  const totalMinutes = Math.max(0, Math.round(ms / (60 * 1000)));
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
 /**
