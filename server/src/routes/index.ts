@@ -11,6 +11,7 @@ import forecastRouter from './forecast';
 import submissionsRouter from './submissions';
 import settingsRouter from './settings';
 import adminRouter from './admin';
+import leaderboardRouter from './leaderboard';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/forecast', forecastRouter);
 router.use('/submissions', submissionsRouter);
 router.use('/me', settingsRouter);
 router.use('/admin', adminRouter);
+router.use('/leaderboard', leaderboardRouter);
 
 export default router;

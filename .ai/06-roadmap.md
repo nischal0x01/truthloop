@@ -2,11 +2,11 @@
 
 > The hour-by-hour plan. The team should be able to read this and know exactly what to do at 3:47am Sunday.
 
-> **Status as of 2026-08-14** — see §0 at the top for "what's done / what's left / what's next" before reading the hour-by-hour plan below.
+> **Status as of 2026-08-15** — see §0 at the top for "what's done / what's left / what's next" before reading the hour-by-hour plan below.
 
 ---
 
-## 0. Quick status (2026-08-14)
+## 0. Quick status (2026-08-15)
 
 Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 
@@ -33,7 +33,7 @@ Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 | ~~All-time leaderboard tab~~ | ⏳ | Daily scope shipping; all-time scope is a tab toggle, easy. |
 | ~~Some badges~~ | ⏳ | Tables exist; need to confirm trigger logic runs on every guess. |
 | ~~Weekly report on-demand regen~~ | ✅ | `POST /api/reports/weekly/regenerate` works, week-only (intentional — see WeeklyReport.tsx) |
-| **Hourly auto-harvested trending claims** (post-build addition) | ✅ | New `server/src/jobs/claimHarvester.ts` cron (`HARVEST_CRON`, default top of every hour) — MiniMax web-search seed queries → Claude extracts + verifies SPECIFIC claims in a single structured call → drops `unverified`/low-confidence/near-duplicate items → inserts survivors as `origin='auto'`. New `origin` column on `claims` (default `'manual'`) for provenance. Switch via `HARVEST_ENABLED=false` to pause without un-scheduling. Manual trigger: `npx tsx -e "import('./src/jobs/claimHarvester.js').then(m => m.runClaimHarvest().then(() => process.exit(0)))"`. |
+| **Hourly auto-harvested trending claims** (post-build addition) | ✅ | New `server/src/jobs/claimHarvester.ts` cron (`HARVEST_CRON`, default top of every hour) — MiniMax web-search seed queries → Claude extracts + verifies SPECIFIC claims in a single structured call → drops `unverified`/low-confidence/near-duplicate items → inserts survivors as `origin='auto'`. New `origin` column on `claims` (default `'manual'`) for provenance. Switch via `HARVEST_ENABLED=false` to pause without un-scheduling. **Manual trigger surfaces: (a) CLI** `npx tsx -e "import('./src/jobs/claimHarvester.js').then(m => m.runClaimHarvest().then(() => process.exit(0)))"`, **(b) admin button on `/claims`** — pink "ADMIN" toolbar (visible only when `user.isAdmin`) with a "Refresh feed" button that hits `POST /api/admin/harvest` and shows a full pipeline summary banner (search hits → AI items → dropped counts → inserted → duration). Drizzle migration `0004_add_origin_to_claims.sql` applied to local DB. |
 
 ### Mobile responsive
 
@@ -308,6 +308,8 @@ If the team continues:
 
 What's actually left to ship the demo, ordered by ROI. **Pick from the top of this list until the timer runs out — every item below is a meaningful demo moment, and the cut-order in §7 still applies.**
 
+**As of 2026-08-15**: Tiers 1 + 2 are fully done. **Tier 3 (~5h of work)** is the remaining pitch-relevant surface area. Tier 4 is cut-order territory.
+
 ### Tier 1 — pitch-critical — ✅ ALL DONE
 
 | # | Task | Status |
@@ -316,23 +318,24 @@ What's actually left to ship the demo, ordered by ROI. **Pick from the top of th
 | 2 | Wire BLIND-SPOT NARRATIVE prompt into weekly regenerate | ✅ |
 | 3 | Build `/forecast` end-to-end (route, page, seed, vote) | ✅ |
 | 4 | Build `/submit` page with live AI fact-check + web evidence | ✅ |
+| 4a | **Hourly auto-harvest** + admin UI (post-build addition, 2026-08-15) | ✅ — cron + `POST /api/admin/harvest` + admin toolbar on `/claims` + `origin` column migration |
 
 ### Tier 2 — also pitched, lower urgency
 
-| # | Task | Why |
+| # | Task | Status |
 | --- | --- | --- |
 | 5 | ~~**Toxicity moderation** on `/api/comments`~~ | ✅ **Done** — every POST now calls Claude via `buildToxicityPrompt`. `block`→422, `soften`→flagged + returns `softened` rewrite, `allow`→as-is. `toxicityFallback` keeps the demo running if Claude is down. |
 
-### Tier 3 — quality-of-life wins
+### Tier 3 — quality-of-life wins (~5h total — pick from top)
 
-| # | Task | Why |
-| --- | --- | --- |
-| 6 | **Reddit-style nested comments** (extend from 1-level; schema already supports `parentCommentId`). Just UI work in `PostCard.tsx` + `actions/discussions.ts`. | Pitch script doesn't promise it, but reviewers will check. 2h. |
-| 7 | **All-time leaderboard tab** (currently daily only) | Easy tab toggle in `Leaderboard.tsx`. Endpoint already accepts `scope=`. 30min. |
-| 8 | **Server-side render of seeded `<Bell>`** (notifications table exists, no trigger). Add a per-user notification for every correct guess + every reply on your comments. Show in nav. | Demo differentiator on /profile. 1.5h. |
-| 9 | **Empty-state + skeleton verification pass** on `/claims`, `/leaderboard`, `/profile`, `/forecast` (WeeklyReport + Discussions + Submit already done) | Cheaper than it sounds, removes the most common judge complaint. 1h. |
-| 10 | **Editorial Split responsive pass** on Discussions / WeeklyReport (mobile nav ✅ done — verify their `md:grid-cols-[1.5fr_1fr]` stacks cleanly at `sm:` breakpoint, no overflow). | 30min. |
-| 11 | **Demo account banner** on `/` and `/claims` for non-demo viewers. | Cosmetic but easy to add. 20min. |
+| # | Task | ETA | Notes |
+| --- | --- | --- | --- |
+| 6 | **Reddit-style nested comments** (extend from 1-level; schema already supports `parentCommentId`). Just UI work in `PostCard.tsx` + `actions/discussions.ts`. | 2h | Pitch script doesn't promise it, but reviewers will check. |
+| 7 | **All-time leaderboard tab** (currently daily only) | 30min | Easy tab toggle in `Leaderboard.tsx`. Endpoint already accepts `scope=`. |
+| 8 | **Server-side render of seeded `<Bell>`** (notifications table exists, no trigger). Add a per-user notification for every correct guess + every reply on your comments. Show in nav. | 1.5h | Demo differentiator on /profile. |
+| 9 | **Empty-state + skeleton verification pass** on `/claims`, `/leaderboard`, `/profile`, `/forecast` (WeeklyReport + Discussions + Submit already done) | 1h | Cheaper than it sounds, removes the most common judge complaint. |
+| 10 | **Editorial Split responsive pass** on Discussions / WeeklyReport (mobile nav ✅ done — verify their `md:grid-cols-[1.5fr_1fr]` stacks cleanly at `sm:` breakpoint, no overflow). | 30min | |
+| 11 | **Demo account banner** on `/` and `/claims` for non-demo viewers. | 20min | Cosmetic but easy to add. |
 
 ### Tier 4 — long-tail, cut first if needed
 
@@ -342,6 +345,11 @@ What's actually left to ship the demo, ordered by ROI. **Pick from the top of th
 | 13 | ~~**Resend email integration** + daily digest cron + `/settings` page~~ | ✅ **Done** — Resend + 3 React Email templates + node-cron + `/settings` + live demo button on `/reports/weekly`. |
 | 14 | **AI narrative for SCAM FORECAST items** (`.ai/05-ai-prompts.md` §1) | Forecast items alone (without per-item AI narrative) still demo fine. 1h. |
 | 15 | **Badge ceremony polish** (full 8 badges, animated unlock toasts on first-trigger) | §7 cut-order: keep 4 of 8. 1h. |
+
+### Remaining demo-prep TODOs (not feature work)
+
+- **Hard-refresh check** on every screen after the auto-harvest migration — old `claims` rows still in client caches may not have `origin` set (backfilled to `'manual'` server-side but cached client objects could surface `undefined`). Worst case is a console error; the `?.` chain in `Feed.tsx` already swallows it.
+- **Cold-load demo run-through** on a freshly-truncated DB (just seed → no claims). Confirm every page renders an empty state without throwing.
 
 ### Open questions to resolve before building
 
@@ -368,3 +376,5 @@ These aren't blockers but should be settled before the corresponding task lands:
 - **2026-08-13** — Replaced hand-rolled bars on `/reports/weekly` with recharts (`AccuracyComparison` radial meters, `OutcomeDonut`, `CategoryBarChart` with blind-spot emphasis, `TrendArea` small-multiples). Plan + rec installed `recharts@3.10.1`.
 - **2026-08-13** — Editorial Split hero applied to `/discussions` + `/reports/weekly` using the `high-end-visual-design` skill.
 - **2026-08-13** — Refactored `/discussions` page layout: Editorial Split hero with live stats, sticky toolbar, animated category chips, featured `PostCard` variant for the top post.
+- **2026-08-15** — Shipped the auto-harvester end-to-end: (1) new `server/src/ai/prompts/claim-harvest.ts` prompt (opus-4-1) that takes pre-fetched MiniMax web-search snippets + 3 seed queries and asks Claude to extract SPECIFIC factual claims AND verify each in a single structured call — empty batch is the safe fallback so the job NEVER inserts hallucinated content; (2) `server/src/jobs/claimHarvester.ts` orchestrator — gathers evidence (3 seed queries in parallel, deduped by URL), calls AI, drops `unverified` + `confidence<50`, dedupes against claims inserted in the last 14 days, inserts survivors with `origin='auto'` and `trending_score = trendSignal * freshness`; non-fatal at every step; (3) wired into `registerJobs.ts` on `HARVEST_CRON` (default `0 * * * *`, override via env), gated by `HARVEST_ENABLED`; (4) Drizzle migration `0004_add_origin_to_claims.sql` generated and applied — `claims` now has `origin TEXT NOT NULL DEFAULT 'manual'` for provenance (legacy rows correctly attributed); (5) admin UI surfaces — `POST /api/admin/harvest` (`server/src/routes/admin.ts`, mounted at `/api/admin`, gated by `requireAdmin` middleware that distinguishes 401 vs 403), `app/src/actions/admin.ts` TanStack Query factory, and a pink "ADMIN" toolbar row on `/claims` (`HarvestTriggerButton`) — visible only when `user?.isAdmin`, shows a tinted result banner with the full pipeline summary after each run. `karnaa787@gmail.com` promoted to `is_admin=true` for testing; `demo@truthloop.app` remains the canonical admin account from `db:seed`.
+- **2026-08-15** — Build fix: `app/src/main.tsx:34` used `process.env.NODE_ENV === 'development'` to gate the dev-only `<Agentation />` overlay — `process` isn't typed in the client tsconfig (no `@types/node` in the browser bundle), so `tsc -b` (run by `npm run build`) failed with `TS2591: Cannot find name 'process'`. Swapped to Vite's `import.meta.env.DEV` — same semantics (`true` in dev, `false` in prod), fully typed via the `vite/client` declarations already in `tsconfig.app.json`, zero new dependencies. `npm run build` now passes (8.75s, 1.6 MB / 474 KB gzipped).

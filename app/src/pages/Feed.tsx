@@ -24,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Flame, Sparkles, TrendingUp, Wand2, X } from 'lucide-react';
+import { ArrowRight, Calendar, Flame, Sparkles, TrendingUp, Wand2, X } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
@@ -44,6 +44,7 @@ import {
   type Claim,
   type ClaimVerdict,
   type ClaimCategory,
+  type DateRange,
   type UserGuessMap,
 } from '@/actions/claims';
 import { ApiError } from '@/lib/api';
@@ -71,6 +72,43 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   // or after the user dismisses. Numbered fields so the banner can show
   // the full pipeline ("X search hits → Y AI items → Z inserted").
   const [harvestResult, setHarvestResult] = useState<ClaimHarvestSummary | null>(null);
+
+  /* ── Date-range filter ──
+     Preset is the chip the user clicked; customRange is the user's
+     manual date pick when "Custom" is active. Both feed into `dateRange`
+     which the query uses as its key suffix + ?from/?to query params. */
+  type DatePreset = 'all' | 'today' | 'yesterday' | 'last3' | 'last7' | 'custom';
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
+    from: '',
+    to: '',
+  });
+
+  const dateRange: DateRange | undefined = useMemo(() => {
+    if (datePreset === 'all') return undefined;
+    if (datePreset === 'custom') {
+      return customRange.from && customRange.to ? customRange : undefined;
+    }
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const shift = (n: number) => {
+      const d = new Date(today);
+      d.setUTCDate(d.getUTCDate() + n);
+      return d;
+    };
+    switch (datePreset) {
+      case 'today':
+        return { from: iso(today), to: iso(shift(1)) };
+      case 'yesterday':
+        return { from: iso(shift(-1)), to: iso(today) };
+      case 'last3':
+        return { from: iso(shift(-2)), to: iso(shift(1)) };
+      case 'last7':
+        return { from: iso(shift(-6)), to: iso(shift(1)) };
+    }
+    return undefined;
+  }, [datePreset, customRange]);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
   const reduce = useReducedMotion();
@@ -101,7 +139,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   }, [initialSearch, searchParams, setSearchParams]);
 
   /* ── Queries (factories from actions/claims.ts) ── */
-  const claimsQuery = useQuery(getClaimsQuery());
+  const claimsQuery = useQuery(getClaimsQuery(dateRange));
 
   const guessesQuery = useQuery({
     ...getMyGuessesQuery(),
@@ -500,6 +538,132 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               </motion.div>
             )}
 
+            {/* Date-range filter — sliding-pill segmented control + inline custom range */}
+            <motion.div
+              className="mt-5"
+              variants={{
+                hidden: {},
+                show: { transition: { staggerChildren: 0.04, delayChildren: 0.5 } },
+              }}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Section label */}
+                <div className="inline-flex items-center gap-1.5 text-foreground/60">
+                  <Calendar size={13} aria-hidden="true" strokeWidth={2.5} />
+                  <span className="font-display text-label-small font-semibold uppercase tracking-wider">
+                    When
+                  </span>
+                </div>
+
+                {/* Segmented control — sliding indicator (layoutId) animates
+                    between presets. */}
+                <div
+                  role="tablist"
+                  aria-label="Date range preset"
+                  className="inline-flex items-center gap-0.5 rounded-full border-2 border-black bg-muted p-1 shadow-hard-sm"
+                >
+                  {(
+                    [
+                      { key: 'all', label: 'All time', short: 'All' },
+                      { key: 'today', label: 'Today', short: 'Today' },
+                      { key: 'yesterday', label: 'Yesterday', short: 'Yest.' },
+                      { key: 'last3', label: 'Last 3 days', short: '3 days' },
+                      { key: 'last7', label: 'Last 7 days', short: '7 days' },
+                      { key: 'custom', label: 'Custom range', short: 'Custom' },
+                    ] as const
+                  ).map(({ key, label, short }) => {
+                    const isActive = datePreset === key;
+                    return (
+                      <motion.button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setDatePreset(key)}
+                        variants={{
+                          hidden: { opacity: 0, y: 4 },
+                          show: { opacity: 1, y: 0 },
+                        }}
+                        transition={{ duration: 0.35, ease: EASE }}
+                        whileTap={{ scale: 0.96 }}
+                        className={`relative inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-label-small font-semibold transition-colors duration-200 ${
+                          isActive
+                            ? 'text-foreground'
+                            : 'text-foreground/55 hover:text-foreground'
+                        }`}
+                      >
+                        {/* Sliding pill — only the active button renders it,
+                            motion animates it between buttons via layoutId. */}
+                        {isActive && (
+                          <motion.span
+                            layoutId="date-pill-active"
+                            className="absolute inset-0 rounded-full border-2 border-black bg-background shadow-hard-sm"
+                            transition={{
+                              type: 'spring',
+                              stiffness: 420,
+                              damping: 32,
+                            }}
+                          />
+                        )}
+                        <span className="relative z-10 hidden sm:inline">
+                          {label}
+                        </span>
+                        <span className="relative z-10 sm:hidden">{short}</span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom range card — slides open below the segmented control */}
+              <AnimatePresence initial={false}>
+                {datePreset === 'custom' && (
+                  <motion.div
+                    key="custom-range"
+                    initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                    animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
+                    exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                    transition={{ duration: 0.28, ease: EASE }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-black bg-card p-2.5 shadow-hard">
+                      <DateField
+                        label="From"
+                        value={customRange.from}
+                        max={customRange.to || undefined}
+                        onChange={(v) =>
+                          setCustomRange((r) => ({ ...r, from: v }))
+                        }
+                      />
+                      <ArrowRight
+                        size={14}
+                        aria-hidden="true"
+                        className="shrink-0 text-foreground/40"
+                        strokeWidth={2.5}
+                      />
+                      <DateField
+                        label="To"
+                        value={customRange.to}
+                        min={customRange.from || undefined}
+                        onChange={(v) => setCustomRange((r) => ({ ...r, to: v }))}
+                      />
+                      {(customRange.from || customRange.to) && (
+                        <motion.button
+                          type="button"
+                          onClick={() => setCustomRange({ from: '', to: '' })}
+                          whileTap={{ scale: 0.94 }}
+                          className="ml-auto inline-flex items-center gap-1 rounded-full border-2 border-black bg-background px-2.5 py-1 text-label-small font-semibold text-foreground/70 transition-colors hover:border-danger hover:bg-danger hover:text-danger-foreground"
+                        >
+                          <X size={10} strokeWidth={3} aria-hidden="true" />
+                          Clear
+                        </motion.button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+
             {/* Category filter bar */}
             <motion.div
               className="mt-5 flex flex-wrap gap-2"
@@ -608,9 +772,15 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
               transition={{ duration: 0.7, ease: EASE }}
               className="rounded-lg border-2 border-black bg-card p-10 text-center shadow-hard"
             >
-              <p className="font-display text-heading-2 font-semibold">No claims yet</p>
+              <p className="font-display text-heading-2 font-semibold">
+                {datePreset === 'all'
+                  ? 'No claims yet'
+                  : 'No claims in this date range'}
+              </p>
               <p className="mt-2 text-body text-foreground/70">
-                The team is curating today's batch. Check back in a few minutes.
+                {datePreset === 'all'
+                  ? "The team is curating today's batch. Check back in a few minutes."
+                  : 'Try widening the range — or hit "All time" to see everything.'}
               </p>
             </motion.div>
           )}
@@ -823,5 +993,41 @@ function HarvestTriggerButton({
       </motion.span>
       <span>{isPending ? 'Refreshing…' : 'Refresh feed'}</span>
     </motion.button>
+  );
+}
+
+/**
+ * Compact labeled date input — used inside the "Custom range" picker card.
+ * The native HTML5 date picker gives us locale-aware UI and keyboard
+ * support for free; we wrap it so the chrome matches the Gumroad-style
+ * 2px-black-border inputs used everywhere else.
+ */
+function DateField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+  max?: string;
+}) {
+  return (
+    <label className="group inline-flex items-center gap-1.5 rounded-md border-2 border-black bg-background px-2 py-1 text-label-small font-semibold text-foreground transition-colors focus-within:bg-highlight focus-within:text-highlight-foreground hover:bg-background">
+      <span className="text-label-small font-semibold uppercase tracking-wider text-foreground/60 group-focus-within:text-highlight-foreground">
+        {label}
+      </span>
+      <input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-30 cursor-pointer border-0 bg-transparent p-0 text-label-small font-semibold text-foreground focus:outline-none focus:ring-0 group-focus-within:text-highlight-foreground"
+      />
+    </label>
   );
 }

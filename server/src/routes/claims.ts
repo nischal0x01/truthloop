@@ -8,7 +8,8 @@
  *  3. Aggregations / CTEs     → raw SQL escape hatch via `sql` template
  */
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { eq, sql, desc } from 'drizzle-orm';
+import { eq, sql, desc, gte, lt, and } from 'drizzle-orm';
+import { z } from 'zod';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
 import { evaluateBadges } from '@/gamification/badges';
@@ -24,14 +25,41 @@ function requireAuth(req: Request, _res: Response, next: NextFunction) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// GET /claims
-// List all published claims, newest first.
+// GET /claims?from=YYYY-MM-DD&to=YYYY-MM-DD
+// List all published claims, newest first. Optional date-range filter:
+//
+//   from — inclusive lower bound (published_at >= from 00:00 UTC)
+//   to   — exclusive upper bound (published_at <  to   00:00 UTC)
+//
+// When both are omitted, returns everything (back-compat). Invalid date
+// strings 400 — we surface the parse error rather than silently ignoring.
 // ──────────────────────────────────────────────────────────────────────────
-router.get('/', async (_req, res) => {
+const listClaimsQuerySchema = z.object({
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD')
+    .optional(),
+});
+
+router.get('/', async (req, res) => {
+  const parsed = listClaimsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw new AppError(400, parsed.error.issues[0]?.message ?? 'Invalid query.');
+  }
+  const { from, to } = parsed.data;
+
+  const conditions = [eq(schema.claims.isPublished, true)];
+  if (from) conditions.push(gte(schema.claims.publishedAt, new Date(`${from}T00:00:00Z`)));
+  if (to) conditions.push(lt(schema.claims.publishedAt, new Date(`${to}T00:00:00Z`)));
+
   const rows = await db
     .select()
     .from(schema.claims)
-    .where(eq(schema.claims.isPublished, true))
+    .where(and(...conditions))
     .orderBy(desc(schema.claims.publishedAt), desc(schema.claims.createdAt));
 
   res.json({ claims: rows });

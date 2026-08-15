@@ -47,6 +47,16 @@ export interface Claim {
   realCount?: number;
   fakeCount?: number;
   createdAt: string;
+  /** Provenance marker — 'manual' (seed/admin) or 'auto' (harvest cron). */
+  origin?: 'manual' | 'auto';
+}
+
+/** Optional date-range filter passed to GET /api/claims. */
+export interface DateRange {
+  /** Inclusive lower bound, YYYY-MM-DD (UTC). */
+  from?: string;
+  /** Exclusive upper bound, YYYY-MM-DD (UTC). */
+  to?: string;
 }
 
 export interface UserGuess {
@@ -73,7 +83,8 @@ export interface VoteResult {
 
 export const claimKeys = {
   all: ['claims'] as const,
-  list: () => [...claimKeys.all, 'list'] as const,
+  list: (range?: DateRange) =>
+    [...claimKeys.all, 'list', range ?? null] as const,
   detail: (id: string) => [...claimKeys.all, 'detail', id] as const,
   myGuesses: () => [...claimKeys.all, 'me-guesses'] as const,
 };
@@ -87,10 +98,16 @@ export const invalidateAllClaimQueries = () => {
 
 /* ── Queries ── */
 
-export const getClaimsQuery = () => ({
-  queryKey: claimKeys.list(),
+export const getClaimsQuery = (range?: DateRange) => ({
+  queryKey: claimKeys.list(range),
   queryFn: async (): Promise<Claim[]> => {
-    const { claims } = await api<{ claims: Claim[] }>('/api/claims');
+    const params: Record<string, string> = {};
+    if (range?.from) params.from = range.from;
+    if (range?.to) params.to = range.to;
+    const qs = Object.keys(params).length
+      ? `?${new URLSearchParams(params).toString()}`
+      : '';
+    const { claims } = await api<{ claims: Claim[] }>(`/api/claims${qs}`);
     return claims;
   },
 });

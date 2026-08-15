@@ -6,92 +6,61 @@
  *   │  Hero (title + meta)         │              │
  *   │  Daily podium (top-3 cards)  │ Your rank    │
  *   │  Daily rows (4+)             │ Next milestone│
- *   │  All-time podium             │ Recent activity│
+ *   │  All-time podium             │              │
  *   │  All-time rows               │              │
  *   └───────────────────────────────┴──────────────┘
  *
  * On mobile the sidebar drops below the leaderboards (single column).
  *
- * The page itself only owns the dummy data + composition. Each view
- * sub-component lives under @/components/leaderboard/:
+ * Both boards fetch from `GET /api/leaderboard?scope=...` in parallel.
+ * The endpoint is public — but the response carries caller-specific
+ * fields (`yourRank`, `yourPoints`, `yourStats`) only when the user is
+ * signed in. So the sidebar cards gracefully degrade to empty states
+ * for anonymous viewers.
+ *
+ * Sub-components in @/components/leaderboard/:
  *   - Podium              → top-3 highlight strip
  *   - LeaderboardRow      → single ranked row
  *   - RankMedal           → rank badge (crown / medal / number)
- *   - YourRankCard        → sidebar card: "#42" + stats
+ *   - YourRankCard        → sidebar card: "#N" + stats
  *   - NextMilestoneCard   → sidebar card: progress bars + streak
- *   - RecentActivityCard  → sidebar card: global activity feed
- *
- * Uses hardcoded dummy data — swap to API once /api/leaderboard/* lands.
  */
 
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 
 import { motion } from 'motion/react';
 import { Flame, TrendingUp, Trophy } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { AppNav } from '@/components/AppNav';
 import {
   DEFAULT_MILESTONES,
   NextMilestoneCard,
 } from '@/components/leaderboard/NextMilestoneCard';
-import {
-  LeaderboardRow,
-} from '@/components/leaderboard/LeaderboardRow';
-import {
-  Podium,
-  type PodiumEntry,
-} from '@/components/leaderboard/Podium';
-import {
-  RecentActivityCard,
-  type ActivityEntry,
-} from '@/components/leaderboard/RecentActivityCard';
+import { LeaderboardRow } from '@/components/leaderboard/LeaderboardRow';
+import { Podium, type PodiumEntry } from '@/components/leaderboard/Podium';
 import { YourRankCard } from '@/components/leaderboard/YourRankCard';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import { EASE } from '@/lib/motion';
-
-/* ── Dummy data (replace with API once available) ── */
-
-const dailyLeaderboard: PodiumEntry[] = [
-  { rank: 1, name: 'Priya Sharma', avatar: null, points: 280, streak: 12 },
-  { rank: 2, name: 'Marco Rossi', avatar: null, points: 245, streak: 8 },
-  { rank: 3, name: 'Aisha Patel', avatar: null, points: 220, streak: 6 },
-  { rank: 4, name: 'James Chen', avatar: null, points: 195, streak: 4 },
-  { rank: 5, name: 'Sofia Rodriguez', avatar: null, points: 180, streak: 3 },
-];
-
-const allTimeLeaderboard: PodiumEntry[] = [
-  { rank: 1, name: 'Priya Sharma', avatar: null, points: 4820, badges: 12 },
-  { rank: 2, name: 'Marco Rossi', avatar: null, points: 4350, badges: 10 },
-  { rank: 3, name: 'Aisha Patel', avatar: null, points: 3980, badges: 9 },
-  { rank: 4, name: 'James Chen', avatar: null, points: 3650, badges: 8 },
-  { rank: 5, name: 'Sofia Rodriguez', avatar: null, points: 3290, badges: 7 },
-  { rank: 6, name: "Liam O'Brien", avatar: null, points: 2980, badges: 6 },
-  { rank: 7, name: 'Yuki Tanaka', avatar: null, points: 2650, badges: 5 },
-  { rank: 8, name: 'Emma Wilson', avatar: null, points: 2340, badges: 5 },
-];
-
-const recentActivity: ActivityEntry[] = [
-  { id: '1', user: 'Priya S.', action: 'voted on', target: 'Climate Claim', correct: true, time: '2m ago' },
-  { id: '2', user: 'Marco R.', action: 'voted on', target: 'Tech News', correct: false, time: '5m ago' },
-  { id: '3', user: 'Aisha P.', action: 'voted on', target: 'Health Tip', correct: true, time: '8m ago' },
-  { id: '4', user: 'James C.', action: 'earned badge', target: '5 Day Streak', correct: null, time: '12m ago' },
-];
+import {
+  getLeaderboardQuery,
+  type LeaderboardResponse,
+  type LeaderboardScope,
+} from '@/actions/leaderboard';
 
 /* ── Page ── */
 
 export function Leaderboard() {
   const { user } = useAuth();
 
-  // The demo user isn't in the dummy data, so no row is highlighted. The
-  // "you" pill only appears if a real user happens to match a seeded name.
-  const markCurrentUser = (entries: PodiumEntry[]) =>
-    entries.map((e) => ({ ...e, isCurrentUser: user?.displayName === e.name }));
+  // Both boards fire in parallel — TanStack Query de-dupes by queryKey,
+  // and the `scope` key makes cache invalidation surgical.
+  const dailyQuery = useQuery(getLeaderboardQuery('daily'));
+  const allTimeQuery = useQuery(getLeaderboardQuery('all-time'));
 
-  const dailyEntries = markCurrentUser(dailyLeaderboard);
-  const allTimeEntries = markCurrentUser(allTimeLeaderboard);
-  const dailyPodium = dailyEntries.slice(0, 3);
-  const dailyRest = dailyEntries.slice(3);
-  const allTimePodium = allTimeEntries.slice(0, 3);
-  const allTimeRest = allTimeEntries.slice(3);
+  const isInitialLoading =
+    dailyQuery.isLoading && !dailyQuery.data &&
+    allTimeQuery.isLoading && !allTimeQuery.data;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -157,73 +126,79 @@ export function Leaderboard() {
         <div className="flex flex-col gap-8 lg:flex-row">
           {/* ── Left: leaderboards ── */}
           <div className="flex-1 space-y-10">
-            {/* Daily leaderboard */}
-            <section aria-label="Daily leaderboard">
-              <SectionHeading
-                icon={<Flame size={18} className="text-orange" aria-hidden="true" />}
-                eyebrow="Today"
-                title="Daily Rankings"
-                meta="resets in 4h"
-                index={0}
-              />
-              <Podium entries={dailyPodium} />
-              <div className="space-y-3">
-                {dailyRest.map((entry, i) => (
-                  <LeaderboardRow
-                    key={entry.rank}
-                    rank={entry.rank}
-                    name={entry.name}
-                    avatar={entry.avatar}
-                    points={entry.points}
-                    streak={entry.streak}
-                    isCurrentUser={entry.isCurrentUser}
-                    index={i}
-                  />
-                ))}
-              </div>
-            </section>
+            {/* Combined error state — if both fail, show one banner */}
+            {(dailyQuery.isError || allTimeQuery.isError) && !isInitialLoading && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className="rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground"
+                role="alert"
+              >
+                <p className="font-semibold">Couldn't load leaderboards.</p>
+                <p className="mt-1 text-label-small">
+                  {(dailyQuery.error as Error)?.message ||
+                    (allTimeQuery.error as Error)?.message ||
+                    'Unknown error'}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    dailyQuery.refetch();
+                    allTimeQuery.refetch();
+                  }}
+                  className="mt-3 border-2 border-black rounded-lg"
+                >
+                  Try again
+                </Button>
+              </motion.div>
+            )}
 
-            {/* All-time leaderboard */}
-            <section aria-label="All-time leaderboard">
-              <SectionHeading
-                icon={<TrendingUp size={18} className="text-pink-accent" aria-hidden="true" />}
-                eyebrow="Since launch"
-                title="All-Time Rankings"
-                index={1}
-              />
-              <Podium entries={allTimePodium} />
-              <div className="space-y-3">
-                {allTimeRest.map((entry, i) => (
-                  <LeaderboardRow
-                    key={entry.rank}
-                    rank={entry.rank}
-                    name={entry.name}
-                    avatar={entry.avatar}
-                    points={entry.points}
-                    badges={entry.badges}
-                    isCurrentUser={entry.isCurrentUser}
-                    index={i}
-                  />
-                ))}
-              </div>
-            </section>
+            <LeaderboardSection
+              scope="daily"
+              data={dailyQuery.data}
+              isLoading={isInitialLoading || (dailyQuery.isLoading && !dailyQuery.data)}
+              currentUserId={user?.id ?? null}
+            />
+
+            <LeaderboardSection
+              scope="all-time"
+              data={allTimeQuery.data}
+              isLoading={isInitialLoading || (allTimeQuery.isLoading && !allTimeQuery.data)}
+              currentUserId={user?.id ?? null}
+            />
           </div>
 
           {/* ── Right: sidebar ── */}
           <aside className="space-y-6 lg:sticky lg:top-6 lg:w-80 lg:self-start">
-            {user && (
+            {user && dailyQuery.data?.yourStats && (
               <YourRankCard
-                rank={42}
-                claimsVoted={24}
-                accuracy={0.71}
+                rank={dailyQuery.data.yourRank ?? 0}
+                claimsVoted={dailyQuery.data.yourStats.totalVotes}
+                accuracy={dailyQuery.data.yourStats.accuracyPct / 100}
                 leaderboardLabel="Daily Leaderboard"
               />
             )}
-            <NextMilestoneCard
-              milestones={DEFAULT_MILESTONES}
-              currentStreakDays={5}
-            />
-            <RecentActivityCard entries={recentActivity} />
+            {user && dailyQuery.data?.yourStats && (
+              <NextMilestoneCard
+                milestones={buildMilestones(dailyQuery.data)}
+                currentStreakDays={dailyQuery.data.yourStats.streakDays}
+              />
+            )}
+            {!user && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: EASE }}
+                className="rounded-lg border-2 border-black bg-card p-5 shadow-hard-sm"
+              >
+                <p className="font-semibold">Sign in to track your rank</p>
+                <p className="mt-1 text-label-small text-foreground/70">
+                  Your position and milestone progress show here once you&apos;re signed in.
+                </p>
+              </motion.div>
+            )}
           </aside>
         </div>
       </main>
@@ -231,7 +206,126 @@ export function Leaderboard() {
   );
 }
 
-/* ── Shared section heading ── */
+/* ── Per-scope section ── */
+
+function LeaderboardSection({
+  scope,
+  data,
+  isLoading,
+  currentUserId,
+}: {
+  scope: LeaderboardScope;
+  data: LeaderboardResponse | undefined;
+  isLoading: boolean;
+  currentUserId: string | null;
+}) {
+  const isDaily = scope === 'daily';
+
+  // Convert API entries → PodiumEntry[] / LeaderboardRow props, marking
+  // the calling user's row so the UI can highlight it.
+  const entries = (data?.entries ?? []).map((e): PodiumEntry => ({
+    rank: e.rank,
+    name: e.displayName,
+    avatar: e.avatarUrl,
+    points: e.points,
+    streak: isDaily ? e.streakDays : undefined,
+    badges: isDaily ? undefined : e.badges,
+    isCurrentUser: e.id === currentUserId,
+  }));
+  const podium = entries.slice(0, 3);
+  const rest = entries.slice(3);
+
+  return (
+    <section aria-label={`${isDaily ? 'Daily' : 'All-time'} leaderboard`}>
+      <SectionHeading
+        icon={
+          isDaily ? (
+            <Flame size={18} className="text-orange" aria-hidden="true" />
+          ) : (
+            <TrendingUp size={18} className="text-pink-accent" aria-hidden="true" />
+          )
+        }
+        eyebrow={isDaily ? 'Today' : 'Since launch'}
+        title={isDaily ? 'Daily Rankings' : 'All-Time Rankings'}
+        meta={isDaily ? (data ? `resets in ${resetCountdown()}` : undefined) : undefined}
+        index={isDaily ? 0 : 1}
+      />
+
+      {isLoading ? (
+        <BoardSkeleton />
+      ) : entries.length === 0 ? (
+        <EmptyState scope={scope} />
+      ) : (
+        <>
+          <Podium entries={podium} />
+          {rest.length > 0 && (
+            <div className="space-y-3">
+              {rest.map((entry, i) => (
+                <LeaderboardRow
+                  key={entry.rank}
+                  rank={entry.rank}
+                  name={entry.name}
+                  avatar={entry.avatar}
+                  points={entry.points}
+                  streak={isDaily ? entry.streak : undefined}
+                  badges={isDaily ? undefined : entry.badges}
+                  isCurrentUser={entry.isCurrentUser}
+                  index={i}
+                />
+              ))}
+            </div>
+          )}
+          {/* "Your rank" footer line if the caller is signed in but not
+              in the visible top-N — saves them from squinting at the JSON. */}
+          {currentUserId && data?.yourRank != null && !entries.some(e => e.isCurrentUser) && (
+            <p className="mt-3 text-center text-label-small text-foreground/70">
+              You&apos;re #{data.yourRank} with {data.yourPoints ?? 0} pts
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/* ── Empty state ── */
+
+function EmptyState({ scope }: { scope: LeaderboardScope }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: EASE }}
+      className="rounded-lg border-2 border-black bg-card p-8 text-center shadow-hard-sm"
+    >
+      <p className="font-display text-heading-3 font-semibold">
+        {scope === 'daily' ? 'No activity today yet' : 'No rankings yet'}
+      </p>
+      <p className="mt-2 text-label text-foreground/70">
+        {scope === 'daily'
+          ? 'Vote on a claim to claim the top of the daily board.'
+          : 'Be the first — vote on claims to start earning points.'}
+      </p>
+    </motion.div>
+  );
+}
+
+/* ── Loading skeleton ── */
+
+function BoardSkeleton() {
+  return (
+    <div className="space-y-3" aria-label="Loading leaderboard">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="h-16 w-full animate-pulse rounded-lg border-2 border-black/10 bg-muted/60"
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── Shared section heading (matches the previous style) ── */
 
 function SectionHeading({
   icon,
@@ -295,4 +389,40 @@ function SectionHeading({
       )}
     </motion.header>
   );
+}
+
+/* ── Helpers ── */
+
+/** "resets in 4h" — rounds to the next whole hour. */
+function resetCountdown(): string {
+  const now = new Date();
+  const next = new Date(now);
+  next.setUTCHours(now.getUTCHours() + 1, 0, 0, 0);
+  const hours = Math.round((next.getTime() - now.getTime()) / (60 * 60 * 1000));
+  return `${hours}h`;
+}
+
+/**
+ * Build the milestone cards from the caller's live stats. The previous
+ * version used a static `DEFAULT_MILESTONES` list — this version makes
+ * the bars reflect the user's actual daily points so progress feels real.
+ */
+function buildMilestones(data: LeaderboardResponse) {
+  const pts = data.yourPoints ?? 0;
+  const streak = data.yourStats?.streakDays ?? 0;
+  return [
+    {
+      label: 'Reach top 3 on daily',
+      pointsAway: Math.max(0, 300 - pts),
+      progress: Math.min(1, pts / 300),
+      barClass: 'bg-pink-accent',
+    },
+    {
+      label: 'Earn a 10-day streak',
+      pointsAway: Math.max(0, 10 - streak),
+      progress: Math.min(1, streak / 10),
+      barClass: 'bg-accent',
+    },
+    ...DEFAULT_MILESTONES,
+  ];
 }

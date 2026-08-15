@@ -75,7 +75,31 @@
       "Bash(curl -s -o /dev/null -w \"admin/harvest: %{http_code}\\\\n\" -X POST http://localhost:3000/api/admin/harvest)",
       "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"SELECT email, is_admin, password_hash IS NOT NULL AS has_pw FROM users ORDER BY email;\")",
       "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"UPDATE users SET is_admin = true WHERE email = 'karnaa787@gmail.com' RETURNING email, is_admin;\")",
-      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"TRUNCATE claims RESTART IDENTITY CASCADE; SELECT \\(SELECT COUNT\\(*\\) FROM claims\\) AS claims, \\(SELECT COUNT\\(*\\) FROM guesses\\) AS guesses, \\(SELECT COUNT\\(*\\) FROM comments\\) AS comments;\")"
+      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"TRUNCATE claims RESTART IDENTITY CASCADE; SELECT \\(SELECT COUNT\\(*\\) FROM claims\\) AS claims, \\(SELECT COUNT\\(*\\) FROM guesses\\) AS guesses, \\(SELECT COUNT\\(*\\) FROM comments\\) AS comments;\")",
+      "Bash(xargs kill)",
+      "Bash(curl -s http://localhost:3000/api/leaderboard?scope=all-time)",
+      "Bash(curl -s \"http://localhost:3000/api/leaderboard?scope=daily\")",
+      "Bash(curl -s 'http://localhost:3000/api/leaderboard?scope=all-time')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s 'http://localhost:3000/api/leaderboard?scope=daily')",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(f\\\\\"all-time: {len\\(d['entries']\\)} entries, top: {d['entries'][0]['displayName']} \\({d['entries'][0]['points']} pts\\)\\\\\"\\); print\\(f\\\\\"anonymous caller: yourRank={d['yourRank']}, yourStats={d['yourStats']}\\\\\"\\)\")",
+      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"SELECT NOW\\(\\) as now_utc, \\(NOW\\(\\) AT TIME ZONE 'UTC'\\)::date as today_utc, COUNT\\(*\\) as guesses_today FROM guesses WHERE created_at >= \\(NOW\\(\\) AT TIME ZONE 'UTC'\\)::date;\")",
+      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c ' *)",
+      "Bash(npx --workspace=app tsc --noEmit)",
+      "Bash(npx --workspace=server tsc --noEmit)",
+      "Bash(npx --workspace=app eslint src/pages/Feed.tsx src/actions/claims.ts)",
+      "Bash(npx --workspace=app eslint src/pages/Feed.tsx)",
+      "Bash(pkill -f \"tsx watch\")",
+      "Bash(lsof -ti:3000)",
+      "Bash(curl -s 'http://localhost:3000/api/claims')",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(f\\\\\"claims: {len\\(d['claims']\\)}\\\\\"\\)\")",
+      "Bash(curl -s 'http://localhost:3000/api/claims?from=2026-08-15&to=2026-08-16')",
+      "Bash(curl -s 'http://localhost:3000/api/claims?from=2026-08-14&to=2026-08-15')",
+      "Bash(curl -s 'http://localhost:3000/api/claims?from=2026-08-13&to=2026-08-16')",
+      "Bash(curl -s 'http://localhost:3000/api/claims?from=2026-08-14')",
+      "Bash(curl -s 'http://localhost:3000/api/claims?to=2026-08-14')",
+      "Bash(curl -s 'http://localhost:3000/api/claims?from=08-15-2026')",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d\\)\")"
     ]
   }
 }
