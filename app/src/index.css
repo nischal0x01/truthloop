@@ -295,6 +295,19 @@
     box-shadow: 4px 4px 0 0 var(--color-black);
   }
 
+  /* iOS safe-area top/bottom padding */
+  .pt-safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Prevent scroll chaining: overscroll-behavior on scrollable containers */
+  .overscroll-contain {
+    overscroll-behavior: contain;
+  }
+
   /* Confetti — used by <Confetti /> in the badge-unlocked ceremony.
      Each piece animates from above the viewport to below, with a
      horizontal drift and rotation. The custom `--rot` property controls
