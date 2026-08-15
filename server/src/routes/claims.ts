@@ -11,6 +11,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { eq, sql, desc } from 'drizzle-orm';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
+import { evaluateBadges } from '@/gamification/badges';
 
 const router = Router();
 
@@ -148,7 +149,9 @@ router.post('/:id/guess', requireAuth, async (req, res) => {
     .set({ voteCount: sql`${schema.claims.voteCount} + 1` })
     .where(eq(schema.claims.id, id));
 
-  // If correct, bump user points (the trigger in schema.sql handles first-guess badge)
+  // If correct, bump user points (the trigger in schema.sql handled
+  // first-guess badge — the trigger is now removed in favour of
+  // application-level badge evaluation below).
   if (isCorrect) {
     await db
       .update(schema.users)
@@ -158,6 +161,10 @@ router.post('/:id/guess', requireAuth, async (req, res) => {
       })
       .where(eq(schema.users.id, userId));
   }
+
+  // Evaluate badges after the vote is durable. The function is idempotent
+  // (`ON CONFLICT DO NOTHING`), so it's safe to call on every vote.
+  const newlyEarnedBadges = await evaluateBadges(userId);
 
   res.status(201).json({
     guess: {
@@ -176,6 +183,7 @@ router.post('/:id/guess', requireAuth, async (req, res) => {
       sourceUrl: claim.sourceUrl,
       category: claim.category,
     },
+    newlyEarnedBadges,
   });
 });
 

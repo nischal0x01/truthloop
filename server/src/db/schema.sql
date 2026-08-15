@@ -259,17 +259,9 @@ CREATE TABLE IF NOT EXISTS user_badges (
   PRIMARY KEY (user_id, badge_slug)
 );
 
--- Seed the 8 badge definitions (idempotent via ON CONFLICT).
-INSERT INTO badges (slug, name, description, icon, rarity) VALUES
-  ('first-guess', 'First Guess', 'Cast your first vote', '🎯', 'common'),
-  ('truth-teller', 'Truth Teller', '5 correct guesses in a row', '✅', 'rare'),
-  ('on-a-roll', 'On a Roll', 'Voted 3 days in a row', '🔥', 'common'),
-  ('weekly-warrior', 'Weekly Warrior', 'Voted 7 days in a row', '⚡', 'rare'),
-  ('scam-hunter', 'Scam Hunter', 'Upvoted a scam forecast that proved accurate', '🕵️', 'epic'),
-  ('discussion-starter', 'Discussion Starter', 'Posted a comment with 3+ upvotes', '💬', 'common'),
-  ('fact-checker', 'Fact-Checker', 'Submitted 5 claims, all AI-verified', '🔍', 'rare'),
-  ('top-10', 'Top 10', 'Ranked in top 10 of the daily leaderboard', '🏆', 'epic')
-ON CONFLICT (slug) DO NOTHING;
+-- NOTE: badge definitions are seeded by `server/src/db/seed.ts` (Set B),
+-- not here. The previous Set A inserts were removed because they
+-- conflicted with the seed and made the demo data inconsistent.
 
 -- ════════════════════════════════════════════════════════════════════════
 -- notifications
@@ -397,28 +389,11 @@ CREATE TABLE IF NOT EXISTS discussion_comment_votes (
 CREATE INDEX IF NOT EXISTS idx_discussion_comment_votes_comment ON discussion_comment_votes(comment_id);
 
 -- ════════════════════════════════════════════════════════════════════════
--- Triggers  (points + first-guess badge on correct guess)
+-- (Triggers removed — badge awarding + points are now application-level
+--  in `server/src/gamification/badges.ts` and `server/src/routes/claims.ts`.
+--  The previous trigger caused a double-credit bug: app route awards +10
+--  AND the trigger also awarded +10. Single source of truth = app route.)
 -- ════════════════════════════════════════════════════════════════════════
-
-CREATE OR REPLACE FUNCTION increment_points_on_correct_guess()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.is_correct THEN
-    UPDATE users
-       SET points = points + 10, updated_at = NOW()
-     WHERE id = NEW.user_id;
-    INSERT INTO user_badges (user_id, badge_slug)
-      VALUES (NEW.user_id, 'first-guess')
-      ON CONFLICT DO NOTHING;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_increment_points ON guesses;
-CREATE TRIGGER trg_increment_points
-  AFTER INSERT ON guesses
-  FOR EACH ROW EXECUTE FUNCTION increment_points_on_correct_guess();
 
 -- ════════════════════════════════════════════════════════════════════════
 -- Demo seed  (5 starter claims — extended seed will live in seed.sql)

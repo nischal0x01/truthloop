@@ -24,6 +24,7 @@ import { desc, eq, sql, and, gte } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, schema } from '@/db';
 import { AppError } from '@/middleware/errorHandler';
+import { evaluateBadges } from '@/gamification/badges';
 import {
   buildLiveFactCheckPrompt,
   factCheckFallback,
@@ -78,6 +79,7 @@ export interface SubmitResponse {
   submission: SubmissionOut;
   factCheck: FactCheck;
   pointsAwarded: number;
+  newlyEarnedBadges: import('@/gamification/badges').NewlyEarnedBadge[];
 }
 
 export interface MySubmissionsResponse {
@@ -198,6 +200,11 @@ router.post('/', requireAuth, async (req, res) => {
     return row;
   });
 
+  // Evaluate badges outside the transaction — the badge insert is
+  // independent of the submission insert and we don't want a notification
+  // read failure to roll back the fact-check.
+  const newlyEarnedBadges = await evaluateBadges(userId);
+
   const submissionOut: SubmissionOut = {
     id: submission.id,
     text: submission.text,
@@ -213,6 +220,7 @@ router.post('/', requireAuth, async (req, res) => {
     submission: submissionOut,
     factCheck,
     pointsAwarded,
+    newlyEarnedBadges,
   } satisfies SubmitResponse);
 });
 

@@ -15,20 +15,20 @@ Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
 | 1 | Voting loop (sign in → see claim → vote → see verdict) | ✅ | `/claims` + `/claims/:id` Feed view, optimistic voting via TanStack Query |
-| 2 | Weekly blind-spot report | ✅ | `/reports/weekly`, range-filter (week/month/quarter/custom), 4 recharts components, regenerate endpoint. Pre-seeded for `demo@truthloop.app`. |
-| 3 | Scam Forecast page (≥ 1 AI-generated item) | ✅ | `/forecast`, severity-colored cards, Believe/Doubt/Skip voting, regenerate control. AI-generated via `scam-forecast.ts` prompt; on-demand first-visit-of-day. Pre-seeded today + 2 prior days. |
+| 2 | Weekly blind-spot report | ✅ | `/reports/weekly`, range-filter (week/month/quarter/custom), 4 recharts components, regenerate endpoint, **live "Email me this report" button** (Resend + on-the-fly fallback for non-cached users). Pre-seeded for `demo@truthloop.app`. |
+| 3 | Scam Forecast page (≥ 1 AI-generated item) | ✅ | `/forecast`, severity-colored cards, Believe/Doubt/Skip voting, regenerate control. AI-generated via `scam-forecast.ts` prompt; on-demand first-visit-of-day. **Instant high-severity alerts wire up to Resend** on `/forecast/generate`. Pre-seeded today + 2 prior days. |
 | 7 | Toxicity moderation on `/api/comments` | ✅ | Every new comment passes through Claude (default tier) via `buildToxicityPrompt`. `block` → 422, no DB write. `soften` → persisted with `is_flagged=true`, response carries the `softened` rewrite for the composer to suggest. `allow` → persisted as-is. `toxicityFallback` keeps the demo running if Claude is down. |
 | 4 | Comments (≥ 1 level of nesting) | ✅ | `/discussions` + nested `PostCard` + CommentThread. **Toxicity moderation live** — every POST passes through Claude; `block`/`soften`/`allow` verdicts persist `is_flagged` and surface `softened` rewrites. |
 | 5 | Leaderboard (≥ daily) | ✅ | `/leaderboard` |
-| 6 | Gumroad design polish | ✅ | Design system extracted → `app/Design.md`; tokens in `app/src/index.css`; high-end-visual-design applied across all built screens |
+| 6 | Gumroad design polish | ✅ | Design system extracted → `app/Design.md`; tokens in `app/src/index.css`; high-end-visual-design applied across all built screens. **New landing Features section** (Asymmetrical Bento, 7 cards) inserted between LoopSteps and BlindSpot. |
 
 ### Originally on the "cut if short on time" list
 
 | Item | Status | Notes |
 | --- | --- | --- |
 | ~~Submit tab + live AI fact-check~~ | ✅ | `/submit` page + `POST /api/submissions` (claude-opus-4-1) + `GET /api/submissions/me`. **Live web evidence** via MiniMax `POST /v1/coding_plan/search` injected as `<search_results>` block; Claude calibrated to answer ONLY from those sources. Confident hallucinated verdicts are now impossible — empty search → confidence ≤ 50 + verdict `unverified`. +5 pts/submission, capped at 20/day. |
-| ~~Email integration~~ | ⬜ | Notifications table exists, no Resend dependency, no cron |
-| ~~SSE real-time~~ | ⬜ | Polling fallback not even wired. No EventSource in frontend. |
+| ~~Email integration~~ | ✅ | Resend SDK wired + 3 React Email templates (digest, weekly report, instant alert). `node-cron` schedules daily digest (08:00 UTC) + weekly report (Sunday 00:00 UTC). `/settings` page for digest + instant alert toggles. `POST /api/reports/weekly/email` is the live demo button. Sender: `noreply@truthloop.sajjan.dev` (verified). On-the-fly fallback computes weekly report from `guesses` for users without a cached `weekly_reports` row. |
+| ~~SSE real-time~~ | ❌ | Cut per §7. Polling fallback in place. |
 | ~~Full Reddit-style comments~~ | ⏳ | 1-level only. Schema supports nested via `parentCommentId`. |
 | ~~All-time leaderboard tab~~ | ⏳ | Daily scope shipping; all-time scope is a tab toggle, easy. |
 | ~~Some badges~~ | ⏳ | Tables exist; need to confirm trigger logic runs on every guess. |
@@ -46,11 +46,11 @@ Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 | --- | --- | --- |
 | Week / Month / Quarter / Custom range | ✅ | RangePicker chip row, server-side bucketing (daily ≤ 31 days, weekly beyond), URL-synced (`?range=...&from=...&to=...`) |
 
-### Range filter on Weekly Report (extra — not in original plan)
+### Deployment (extra — not in original plan)
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Week / Month / Quarter / Custom range | ✅ | RangePicker chip row, server-side bucketing (daily ≤ 31 days, weekly beyond), URL-synced (`?range=...&from=...&to=...`) |
+| Server deployed to Render | ✅ | `tsup` config marks `react`-`react-dom`-`@react-email/*` as external so Node resolves them at runtime (avoids "Dynamic require of 'util' is not supported" — React Email ships CJS). |
 
 
 ---
@@ -161,13 +161,13 @@ These are done BEFORE the 48h clock starts. They are the highest-leverage prep.
 - [ ] **Backend**: SSE broadcaster (`.ai/03-system-architecture.md` §3.6)
 - [ ] **Backend**: `GET /api/sse/connect`
 - [ ] **Backend**: notification triggers on every event (table exists, no trigger wired)
-- [ ] **Backend**: Resend email integration + React Email template
-- [ ] **Backend**: daily digest cron (manual trigger for demo)
+- [x] **Backend**: Resend email integration + React Email template
+- [x] **Backend**: daily digest cron (manual trigger for demo)
 - [ ] **Frontend**: `useSSE` hook + `<Bell>` + notification dropdown
 - [ ] **Frontend**: live comment updates on claim page
-- [ ] **Frontend**: settings page for email preferences
+- [x] **Frontend**: settings page for email preferences
 
-**Demo gate**: Open two browser tabs, post a comment in one, see it in the other within 2s. Bell shows unread count.
+**Demo gate**: Open two browser tabs, post a comment in one, see it in the other within 2s. Bell shows unread count. ✅ for email path (live "Email me this report" button on `/reports/weekly`); ⬜ for SSE.
 
 ### Hour 30–34: Polish & Integration
 
@@ -188,13 +188,13 @@ These are done BEFORE the 48h clock starts. They are the highest-leverage prep.
 
 ### Hour 38–42: Deploy & Smoke Test
 
-- [ ] **Backend**: deploy to Railway, run migrations + seed
+- [x] **Backend**: deploy to Render (with `tsup` external-flag fix for `react-dom`/`@react-email`), run migrations + seed
 - [ ] **Frontend**: deploy to Vercel, set `VITE_API_URL`
 - [ ] **Both**: run through every demo script step in `.ai/06-roadmap.md` §5
 - [ ] **Both**: test on 2 different devices (laptop + phone)
 - [ ] **Both**: open DevTools, check no console errors, no 4xx/5xx in network
 - [ ] **Both**: test SSE by opening 2 tabs
-- [ ] **Both**: send a test email via Resend, verify it lands
+- [x] **Both**: send a test email via Resend, verify it lands ✅ (verified `sajjan.dev` domain, `noreply@truthloop.sajjan.dev` sender live)
 
 ### Hour 42–46: Pitch Prep
 
@@ -338,7 +338,7 @@ What's actually left to ship the demo, ordered by ROI. **Pick from the top of th
 | # | Task | Why (and why it's low) |
 | --- | --- | --- |
 | 12 | **SSE real-time** (`GET /api/sse/connect`, `EventSource` consumer) — falls back to polling | §7 cut-order: nice demo moment (open two tabs, see live update) but optional. 4h. |
-| 13 | **Resend email integration** + daily digest cron + `/settings` page | §7 cut-order: in-app notifications cover the demo. 3h. |
+| 13 | ~~**Resend email integration** + daily digest cron + `/settings` page~~ | ✅ **Done** — Resend + 3 React Email templates + node-cron + `/settings` + live demo button on `/reports/weekly`. |
 | 14 | **AI narrative for SCAM FORECAST items** (`.ai/05-ai-prompts.md` §1) | Forecast items alone (without per-item AI narrative) still demo fine. 1h. |
 | 15 | **Badge ceremony polish** (full 8 badges, animated unlock toasts on first-trigger) | §7 cut-order: keep 4 of 8. 1h. |
 
@@ -355,6 +355,10 @@ These aren't blockers but should be settled before the corresponding task lands:
 
 ## 10. Decision log (changes made during the build)
 
+- **2026-08-14** — Shipped Resend email integration end-to-end. Three surfaces: (1) daily digest at 08:00 UTC via `node-cron`, (2) weekly report at Sunday 00:00 UTC, (3) instant high-severity alerts fired from `/forecast/generate`. All three render via React Email templates (`digest.tsx`, `weekly-report.tsx`, `instant-alert.tsx`) sharing a `_layout.tsx` shell. Client (`email/client.ts`) lazy-loads Resend SDK and has a **dry-run fallback** when `RESEND_API_KEY` is empty/`demo_*` — logs the rendered HTML and returns `{ id: 'dry-run', dryRun: true }` so the demo runs without a paid key. `/settings` page (`Settings.tsx`) controls all three prefs via `PUT /api/me/settings` (auto-creates the row on first GET so the UI never has a "missing preferences" state). Live demo button on `/reports/weekly` hits `POST /api/reports/weekly/email` — this is the "wow" moment. If the user has no cached `weekly_reports` row (common for non-demo users), `sendWeeklyReportEmail` computes the report on-the-fly from the `guesses` table (no AI narrative, deterministic fallback). Routes: `[client](server/src/email/client.ts)`, `[send](server/src/email/send.ts)`, `[settings](server/src/routes/settings.ts)`, `[reports email](server/src/routes/reports.ts)`, `[crons](server/src/jobs/)`, `[Settings page](app/src/pages/Settings.tsx)`.
+- **2026-08-14** — Render deploy fix. `tsup` defaults to `format: ['esm']` and **bundles** everything into one ESM file. `react-dom/server.node.js` (transitive of `@react-email/render`) calls `require('util')` from CJS, which is a "Dynamic require" — illegal in ESM. Added `external: ['react', 'react-dom', 'react-dom/server', 'react-dom/server.node', '@react-email/components', '@react-email/render']` to `tsup.config.ts`. Node now resolves them at runtime and handles the CJS/ESM interop. Bundle shrank 1.53 MB → 195 KB. Source: `[tsup.config.ts](server/tsup.config.ts)`.
+- **2026-08-14** — Decluttered `AppNav`. Was 7 inline links, now 4 primary pills (Claims / Forecast / Reports / Leaderboard) + a hover-only "More" dropdown (Discussions / Submit / Settings). Each primary pill uses a Double-Bezel pattern (outer ring + inner icon circle). Mobile drawer unchanged. Source: `[AppNav.tsx](app/src/components/AppNav.tsx)`.
+- **2026-08-14** — New landing page Features section. Asymmetrical Bento with 7 cards (1 HERO 8×2 + 4 tiles + 1 wide banner 12-col). Editorial Luxury vibe — warm cream section, dark ink, hot-pink `bg-pink-accent` underlines. Each card uses the Double-Bezel pattern (outer `bg-foreground/10` shell + inner `bg-card` core with inset highlight). Button-in-Button arrows on every CTA pill. Per-card `whileInView` entrance animation (opacity + blur + y, 900ms cubic-bezier). Hero card has a faux category bar chart with the user's blind spot highlighted in pink. Mobile: collapses to single column below 768px. Bug found and fixed: `md:col-span-X` was on the inner `CardShell`, but the grid's direct children were the `FeatureCell` wrappers — spans only apply to direct children, so every card was 1 column. Moved spans to `FeatureCell`. Inserted between `<LoopSteps />` and `<BlindSpot />` in `App.tsx`. Source: `[features.tsx](app/src/components/landing/features.tsx)`.
 - **2026-08-14** — Wired real toxicity moderation into `POST /api/comments`. Schema + prompt + fallback already existed in `server/src/ai/`; missing only the actual `generateStructured` call in the route. Created `prompts/toxicity.ts` (matches the live `toxicityVerdictSchema`: `{ decision: 'allow' | 'block' | 'soften', reason, softened? }` — the spec doc in `.ai/05-ai-prompts.md` §3 is older and uses a different shape, ignored). `POST /api/comments` now: calls Claude on every comment → `block` returns 422 with the reason (no DB write) → `soften` persists the comment with `is_flagged=true` + `toxicity_score=0.6` and the response carries the `softened` rewrite for the composer to surface as a one-click suggestion → `allow` persists as-is. Uses the default (cheap) AI tier — the verdict is short JSON, no need for opus. `toxicityFallback` is `{ decision: 'allow' }` so any AI outage keeps the demo running. Source: `[prompt](server/src/ai/prompts/toxicity.ts)`, `[route](server/src/routes/comments.ts)`.
 - **2026-08-14** — Shipped `/submit` end-to-end: `POST /api/submissions` (auth, opus-4-1, transactional +5 pts capped at 20/day) + `GET /api/submissions/me` + `/submit` page (textarea, elapsed-time counter, color-coded verdict result card with confidence bar + bulleted reasons + clickable sources, "My recent submissions" list with optimistic cache prepend). Added `submitClaim` action + `applySubmissionToCache` helper. Fixed `applySubmissionToCache` cache-shape mismatch (`Submission[]` vs `MyMySubmissionsResponse` envelope). Wired into `AppNav` between Forecast and Reports. Source: `[submissions route](server/src/routes/submissions.ts)`, `[Submit page](app/src/pages/Submit.tsx)`, `[actions](app/src/actions/submissions.ts)`.
 - **2026-08-14** — Wired live web evidence into `/submit` so Claude answers from current sources, not stale training data. First attempt was the Anthropic hosted `web_search_20250305` tool — silently dropped because `ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic` (MiniMax gateway doesn't forward server-side tools). Final design: pre-fetch via Tavily, then re-routed to MiniMax's own `POST {host}/v1/coding_plan/search` endpoint (Bearer-token auth via `Authorization: Bearer` + `MM-API-Source: Minimax-MCP`, body `{q}`, response `{organic: [{title, link, snippet, date}]}`). Results injected as a `<search_results>` block; prompt rewritten to **forbid** drawing on training-data knowledge for any factual claim. Confidence calibration rules force empty-search → confidence ≤ 50 + verdict `unverified`, so confident hallucinations are now structurally impossible. Wrapper falls back to `ANTHROPIC_API_KEY` if `MINIMAX_API_KEY` is unset (same Token Plan seat). Source: `[search wrapper](server/src/ai/search.ts)`, `[prompt](server/src/ai/prompts/live-fact-check.ts)`.
