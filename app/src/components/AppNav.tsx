@@ -157,7 +157,7 @@ export function AppNav({ showClaims = true }: AppNavProps) {
 
   return (
     <header className="sticky top-0 z-50 border-b-2 border-black bg-background">
-      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-6 py-3.5">
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-3.5 pt-safe-area-top">
         {/* Logo */}
         <Link
           to="/"

@@ -662,9 +662,9 @@ export function ClaimDetailDrawer({
               onClick={onClose}
               aria-hidden="true"
             />
-            {/* Centered modal with proper scrolling */}
+            {/* Centered modal with proper scrolling — safe-area aware */}
             <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center p-6"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
               role="dialog"
               aria-modal="true"
               aria-label="Claim discussion"
@@ -675,14 +675,14 @@ export function ClaimDetailDrawer({
               onClick={onClose}
             >
               <motion.div
-                className="w-full max-w-2xl max-h-[85vh] rounded-2xl border-2 border-black bg-card shadow-hard-lg flex flex-col overflow-hidden"
-                initial={{ scale: 0.9, y: 20 }}
+                className="w-full max-w-2xl max-h-[90dvh] sm:max-h-[85vh] rounded-2xl border-2 border-black bg-card shadow-hard-lg flex flex-col overflow-hidden"
+                initial={{ scale: 0.92, y: 16 }}
                 animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 20 }}
-                transition={{ type: 'spring', damping: 20, stiffness: 250 }}
+                exit={{ scale: 0.92, y: 16 }}
+                transition={{ type: 'spring', damping: 22, stiffness: 260 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto overscroll-contain">
                   {children}
                 </div>
               </motion.div>
@@ -708,7 +708,7 @@ export function ClaimDetailDrawer({
             aria-hidden="true"
           />
           <motion.div
-            className="fixed inset-x-0 bottom-0 z-50 h-[88vh] overflow-hidden rounded-t-2xl border-t-2 border-black lg:hidden"
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[88dvh] overflow-hidden rounded-t-2xl border-t-2 border-black lg:hidden pb-safe-area-bottom"
             role="dialog"
             aria-modal="true"
             aria-label="Claim discussion"

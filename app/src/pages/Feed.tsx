@@ -268,20 +268,20 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   ) : null;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
       {/* ── Shared App Nav ── */}
       <AppNav showClaims={true} />
 
       {/* ── Split pane ──
           Desktop: feed column scrolls independently, panel docked right.
           Mobile: single column; the panel becomes a bottom-sheet drawer. */}
-      <div className="mx-auto flex w-full max-w-[1600px] min-h-0 flex-1">
+      <div className="mx-auto flex h-full w-full max-w-[1600px] min-h-0 flex-1">
         {/* Feed column */}
         <motion.div
           layout
           className={[
-            'min-h-0 flex-1 overflow-y-auto px-6 py-8',
-            isPanelOpen ? 'lg:w-[55%] lg:max-w-[55%]' : 'mx-auto max-w-3xl',
+            'min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8',
+            isPanelOpen ? 'lg:w-[55%] lg:max-w-[55%]' : 'mx-auto w-full max-w-3xl',
           ].join(' ')}
         >
           {/* Welcome banner (post-OAuth) */}
