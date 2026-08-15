@@ -76,10 +76,21 @@ export const updateMySettingsMutation = () => ({
     });
     return res.settings;
   },
-  onSuccess: (settings: MySettings) => {
-    queryClient.setQueryData(settingsKeys.me(), settings);
-  },
 });
+
+/**
+ * Reconcile the settings cache after a successful save.
+ *
+ * Callers MUST invoke this from their mutation's `onSuccess` rather than
+ * relying on a factory-spread `onSuccess` — a user-supplied onSuccess
+ * silently overrides the factory's, and the cache write never happens.
+ * Without this, the page's "dirty" check would never flip false because
+ * `draft` (set to the server response) diverges from `settingsQuery.data`
+ * (still the old pre-save value).
+ */
+export function applySettingsToCache(settings: MySettings) {
+  queryClient.setQueryData(settingsKeys.me(), settings);
+}
 
 /* ── Live "Email me this report" action ── */
 

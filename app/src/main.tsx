@@ -25,11 +25,13 @@ import '@fontsource/inter/700.css';
 import './index.css';
 import App from './App';
 import { Providers } from './providers';
+import { Agentation } from 'agentation';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Providers>
       <App />
+      {process.env.NODE_ENV === 'development' && <Agentation />}
     </Providers>
   </StrictMode>
 );

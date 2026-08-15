@@ -15,6 +15,8 @@
 
 import { api } from '@/lib/api';
 import { queryClient } from '@/providers';
+import { invalidateAllProfileQueries } from './profile';
+import type { ProfileBadge } from './profile';
 
 /* ── Types ── */
 
@@ -55,6 +57,8 @@ export interface SubmitResponse {
   submission: Submission;
   factCheck: FactCheck;
   pointsAwarded: number;
+  /** Badges unlocked by this submission. Empty if no new unlocks. */
+  newlyEarnedBadges: ProfileBadge[];
 }
 
 /** Server-side envelope shape — `getMySubmissions` strips `.submissions`. */
@@ -116,4 +120,6 @@ export function applySubmissionToCache(submission: Submission) {
   // The server awarded points; the auth-context cache (`/api/auth/me`) drives
   // the TopNav coin, so invalidate it so the next render reflects the new total.
   queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+  // A submission may have unlocked a badge — refresh the profile cache too.
+  invalidateAllProfileQueries();
 }

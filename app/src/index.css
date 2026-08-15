@@ -295,6 +295,21 @@
     box-shadow: 4px 4px 0 0 var(--color-black);
   }
 
+  /* Confetti — used by <Confetti /> in the badge-unlocked ceremony.
+     Each piece animates from above the viewport to below, with a
+     horizontal drift and rotation. The custom `--rot` property controls
+     the end rotation. */
+  @keyframes confetti-fall {
+    0% {
+      transform: translate(0, 0) rotate(0deg);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(var(--drift, 0), 110vh) rotate(var(--rot, 720deg));
+      opacity: 0;
+    }
+  }
+
   /* Direct access to raw Gumroad palette */
   .bg-off-white-surface {
     background-color: var(--color-off-white-surface);

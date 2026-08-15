@@ -20,6 +20,7 @@ import { AppNav } from '@/components/AppNav';
 import {
   getMySettingsQuery,
   updateMySettingsMutation,
+  applySettingsToCache,
   type MySettings,
 } from '@/actions/settings';
 import { useAuth } from '@/contexts/auth-context';
@@ -50,6 +51,7 @@ export function Settings() {
   const updateMutation = useMutation({
     ...updateMySettingsMutation(),
     onSuccess: (saved) => {
+      applySettingsToCache(saved);
       setDraft(saved);
       setToast('Settings saved.');
       setTimeout(() => setToast(null), 3000);

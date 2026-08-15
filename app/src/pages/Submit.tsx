@@ -46,6 +46,8 @@ import {
   type FactCheck,
   type Submission,
 } from '@/actions/submissions';
+import { BadgeUnlockedModal } from '@/components/feed/BadgeUnlockedModal';
+import type { ProfileBadge } from '@/actions/profile';
 
 const MAX_CHARS = 1000;
 
@@ -131,6 +133,7 @@ export function Submit() {
   // Recent-submissions filter (client-side — createdAt is already in the payload)
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [customDate, setCustomDate] = useState<string>(''); // YYYY-MM-DD
+  const [unlockedBadges, setUnlockedBadges] = useState<ProfileBadge[]>([]);
 
   // Recent submissions — pre-populated so the page never feels empty on cold load.
   const mineQuery = useQuery({
@@ -168,6 +171,10 @@ export function Submit() {
       applySubmissionToCache(res.submission);
       setText('');
       setElapsedMs(0);
+      // Fire the badge ceremony if the server returned newly-earned badges.
+      if (res.newlyEarnedBadges && res.newlyEarnedBadges.length > 0) {
+        setUnlockedBadges(res.newlyEarnedBadges);
+      }
     },
   });
 
@@ -396,6 +403,12 @@ export function Submit() {
             </motion.ul>
           )}
         </section>
+
+        {/* ── Badge-unlocked ceremony (fires after a successful submit) ── */}
+        <BadgeUnlockedModal
+          badges={unlockedBadges}
+          onClose={() => setUnlockedBadges([])}
+        />
       </main>
     </div>
   );

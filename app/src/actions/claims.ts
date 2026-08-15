@@ -13,6 +13,8 @@
 import { ApiError, api } from '@/lib/api';
 import { queryClient } from '@/providers';
 import { invalidateAllAuthQueries } from './auth';
+import { invalidateAllProfileQueries } from './profile';
+import type { ProfileBadge } from './profile';
 
 /* ── Types ── */
 
@@ -63,6 +65,8 @@ export interface VoteResult {
   correct: boolean;
   pointsAwarded: number;
   claim: Pick<Claim, 'id' | 'text' | 'verdict' | 'explanation' | 'sourceUrl' | 'category'>;
+  /** Badges unlocked by this vote. Empty if no new unlocks. */
+  newlyEarnedBadges: ProfileBadge[];
 }
 
 /* ── Query keys ── */
@@ -127,12 +131,31 @@ export const voteClaimMutation = () => ({
       body: { user_answer: answer },
     });
   },
-  // Server is the source of truth — refresh everything that depends on
-  // votes or user points.
-  onSuccess: () => {
-    invalidateAllClaimQueries();
-  },
 });
+
+/**
+ * Reconcile caches after a successful vote.
+ *
+ *   - Writes the server's authoritative `correct` value into the myGuesses
+ *     cache so the card locks immediately with the real verdict (overrides
+ *     the optimistic `correct: false` from onMutate).
+ *   - Invalidates every claim-list + auth + profile query so the vote
+ *     counter, "X of Y voted" rail, points display, and badges all refresh
+ *     in the next render.
+ *
+ * Callers MUST invoke this from their mutation's `onSuccess` rather than
+ * relying on a factory-spread `onSuccess` — a user-supplied onSuccess
+ * silently overrides the factory's, and the invalidations never fire.
+ * (This happened: see Feed.tsx commit history for the original bug.)
+ */
+export function applyVoteToCache(result: VoteResult, claimId: string) {
+  queryClient.setQueryData<UserGuessMap | undefined>(claimKeys.myGuesses(), (cur) => ({
+    ...(cur ?? {}),
+    [claimId]: { answer: result.guess.userAnswer, correct: result.guess.isCorrect },
+  }));
+  invalidateAllClaimQueries();
+  invalidateAllProfileQueries();
+}
 
 /* ── Category metadata (label + icon + colour accent) ── */
 

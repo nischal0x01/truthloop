@@ -98,7 +98,15 @@ export function VoteButtons({
         <motion.button
           key="real"
           type="button"
-          onClick={() => onVote('real')}
+          onClick={(e) => {
+            // Defensive: motion.button may attach pointer-event listeners for
+            // whileTap that bypass React's synthetic event delegation, so we
+            // stop propagation here as well as on the wrapper div in ClaimCard.
+            // Without this the surrounding article's onClick also fires and
+            // opens the detail panel mid-vote.
+            e.stopPropagation();
+            onVote('real');
+          }}
           disabled={disabled || isVoting}
           aria-busy={isVoting}
           whileHover={!disabled && !isVoting ? { scale: 1.02 } : undefined}
@@ -121,7 +129,11 @@ export function VoteButtons({
         <motion.button
           key="fake"
           type="button"
-          onClick={() => onVote('fake')}
+          onClick={(e) => {
+            // See note above on the REAL button.
+            e.stopPropagation();
+            onVote('fake');
+          }}
           disabled={disabled || isVoting}
           aria-busy={isVoting}
           whileHover={!disabled && !isVoting ? { scale: 1.02 } : undefined}

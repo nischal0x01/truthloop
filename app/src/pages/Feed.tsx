@@ -24,16 +24,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Flame, Sparkles, TrendingUp } from 'lucide-react';
+import { Flame, Sparkles, TrendingUp, X } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
   ClaimDetailPanel,
   ClaimDetailDrawer,
 } from '@/components/feed/ClaimDetailPanel';
+import { BadgeUnlockedModal } from '@/components/feed/BadgeUnlockedModal';
 import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/AppNav';
 import {
+  applyVoteToCache,
   claimKeys,
   getClaimsQuery,
   getMyGuessesQuery,
@@ -44,6 +46,8 @@ import {
   type ClaimCategory,
   type UserGuessMap,
 } from '@/actions/claims';
+import { ApiError } from '@/lib/api';
+import { type ProfileBadge } from '@/actions/profile';
 
 interface FeedProps {
   /**
@@ -61,6 +65,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategory, setSelectedCategory] = useState<ClaimCategory | null>(null);
+  const [unlockedBadges, setUnlockedBadges] = useState<ProfileBadge[]>([]);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
   const reduce = useReducedMotion();
@@ -114,15 +119,25 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
       return { prev };
     },
 
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
+      // 409 "already voted" — the cache said we hadn't voted (e.g. a fresh
+      // demo seed the server knows about), but the server says we have.
+      // Reverting to `prev` would just bounce the card back to vote buttons,
+      // leaving the user stuck. Refetch instead so the card snaps to the
+      // authoritative state (locked + real verdict).
+      if (err instanceof ApiError && err.status === 409) {
+        qc.invalidateQueries({ queryKey: claimKeys.myGuesses() });
+        return;
+      }
       if (ctx?.prev) qc.setQueryData(claimKeys.myGuesses(), ctx.prev);
     },
 
     onSuccess: (result, { claimId }) => {
-      qc.setQueryData<UserGuessMap | undefined>(claimKeys.myGuesses(), (cur) => ({
-        ...(cur ?? {}),
-        [claimId]: { answer: result.guess.userAnswer, correct: result.guess.isCorrect },
-      }));
+      applyVoteToCache(result, claimId);
+      // Fire the badge ceremony if the server returned newly-earned badges.
+      if (result.newlyEarnedBadges && result.newlyEarnedBadges.length > 0) {
+        setUnlockedBadges(result.newlyEarnedBadges);
+      }
     },
   });
 
@@ -527,18 +542,37 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
             </motion.div>
           )}
 
-          {/* Vote-error banner */}
-          {voteMutation.isError && (
-            <div
-              className="mt-6 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground"
-              role="alert"
-            >
-              <p className="font-semibold">Vote failed</p>
-              <p className="mt-1 text-label-small">
-                {(voteMutation.error as Error).message}
-              </p>
-            </div>
-          )}
+          {/* Vote-error toast (sticky to the top of the feed so the user
+              doesn't have to scroll past a bunch of cards to see it). */}
+          <AnimatePresence>
+            {voteMutation.isError && (
+              <motion.div
+                key="vote-error"
+                initial={reduce ? false : { opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className="mb-5 flex items-start gap-3 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground shadow-hard"
+                role="alert"
+                aria-live="assertive"
+              >
+                <div className="flex-1">
+                  <p className="font-semibold">Vote failed</p>
+                  <p className="mt-1 text-label-small">
+                    {(voteMutation.error as Error).message}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => voteMutation.reset()}
+                  aria-label="Dismiss vote error"
+                  className="grid size-7 shrink-0 place-items-center rounded-md border-2 border-black bg-danger-foreground/20 transition-colors hover:bg-danger-foreground/30"
+                >
+                  <X size={14} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* ── Desktop Detail Panel (docked right) ── */}
@@ -566,6 +600,12 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
           {panelContent}
         </ClaimDetailDrawer>
       </div>
+
+      {/* ── Badge-unlocked ceremony ── */}
+      <BadgeUnlockedModal
+        badges={unlockedBadges}
+        onClose={() => setUnlockedBadges([])}
+      />
     </div>
   );
 }
