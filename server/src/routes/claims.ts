@@ -58,16 +58,24 @@ router.get('/', async (req, res) => {
 
   // Hydrate realCount / fakeCount via correlated subqueries. Cheaper than
   // a separate group-by round-trip and keeps the list endpoint to a single
-  // query. The `FILTER` clause is what Postgres gives us instead of CASE.
+  // query. Two traps to avoid:
+//   1. Drizzle emits `${schema.claims.id}` as bare `"id"` inside the FROM
+//      `guesses` clause — Postgres resolves bare columns to the innermost
+//      table, so "id" would mean `guesses.id`, not `claims.id`. We must
+//      qualify with the table name via `sql.raw` (safe: schema names are
+//      server-controlled, not user input).
+//   2. `user_answer` is a Postgres enum. Drizzle binds 'real' / 'fake'
+//      as a text parameter; the bare equality silently returns NULL for
+//      every row. Cast to text to make the comparison reliable.
   const realCount = sql<number>`(
     SELECT COUNT(*)::int FROM ${schema.guesses}
-    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
-      AND ${schema.guesses.userAnswer} = 'real'
+    WHERE ${schema.guesses.claimId} = ${sql.raw('"claims"."id"')}
+      AND ${schema.guesses.userAnswer}::text = 'real'
   )`;
   const fakeCount = sql<number>`(
     SELECT COUNT(*)::int FROM ${schema.guesses}
-    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
-      AND ${schema.guesses.userAnswer} = 'fake'
+    WHERE ${schema.guesses.claimId} = ${sql.raw('"claims"."id"')}
+      AND ${schema.guesses.userAnswer}::text = 'fake'
   )`;
 
   const rows = await db
@@ -132,16 +140,17 @@ router.get('/:id', async (req, res) => {
   const { id } = req.params;
 
   // Same hydration as the list endpoint — keep the two in lockstep so the
-  // detail panel and the card show identical tallies.
+  // detail panel and the card show identical tallies. See the list endpoint
+  // for the rationale on `sql.raw('"claims"."id"')` and `::text` cast.
   const realCount = sql<number>`(
     SELECT COUNT(*)::int FROM ${schema.guesses}
-    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
-      AND ${schema.guesses.userAnswer} = 'real'
+    WHERE ${schema.guesses.claimId} = ${sql.raw('"claims"."id"')}
+      AND ${schema.guesses.userAnswer}::text = 'real'
   )`;
   const fakeCount = sql<number>`(
     SELECT COUNT(*)::int FROM ${schema.guesses}
-    WHERE ${schema.guesses.claimId} = ${schema.claims.id}
-      AND ${schema.guesses.userAnswer} = 'fake'
+    WHERE ${schema.guesses.claimId} = ${sql.raw('"claims"."id"')}
+      AND ${schema.guesses.userAnswer}::text = 'fake'
   )`;
 
   const [claim] = await db
