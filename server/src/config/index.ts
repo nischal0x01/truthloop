@@ -57,6 +57,27 @@ export const config = {
     enabled: (process.env.CRON_ENABLED ?? 'true').toLowerCase() !== 'false',
     timezone: process.env.CRON_TIMEZONE || 'UTC',
   },
+  harvest: {
+    /**
+     * Master switch for the hourly claim-harvester cron
+     * (server/src/jobs/claimHarvester.ts). Set HARVEST_ENABLED=false to
+     * pause automated ingestion without touching the schedule — useful
+     * during rate-limit windows or while debugging. The job's
+     * `runClaimHarvest()` helper stays callable for manual triggers.
+     */
+    enabled: (process.env.HARVEST_ENABLED ?? 'true').toLowerCase() !== 'false',
+    /**
+     * Cron expression. Defaults to the top of every hour. Override for
+     * denser or sparser runs (e.g. every 30m during a breaking-news window).
+     */
+    schedule: process.env.HARVEST_CRON || '0 * * * *',
+    /**
+     * Hard cap on claims inserted per run. Bounded 1–5 — the harvest
+     * prompt only returns up to 5 items per call, and we slice to this
+     * number before insert.
+     */
+    maxPerRun: envInt(process.env.HARVEST_MAX_PER_RUN, 2),
+  },
 } as const;
 
 export type AppConfig = typeof config;

@@ -24,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Flame, Sparkles, TrendingUp, X } from 'lucide-react';
+import { Flame, Sparkles, TrendingUp, Wand2, X } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { ClaimCard, ClaimCardSkeleton } from '@/components/feed/ClaimCard';
 import {
@@ -48,6 +48,7 @@ import {
 } from '@/actions/claims';
 import { ApiError } from '@/lib/api';
 import { type ProfileBadge } from '@/actions/profile';
+import { runHarvestMutation, type ClaimHarvestSummary } from '@/actions/admin';
 
 interface FeedProps {
   /**
@@ -66,6 +67,10 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategory, setSelectedCategory] = useState<ClaimCategory | null>(null);
   const [unlockedBadges, setUnlockedBadges] = useState<ProfileBadge[]>([]);
+  // Latest result from the admin harvest trigger. null when no run yet,
+  // or after the user dismisses. Numbered fields so the banner can show
+  // the full pipeline ("X search hits → Y AI items → Z inserted").
+  const [harvestResult, setHarvestResult] = useState<ClaimHarvestSummary | null>(null);
   const isWelcome = searchParams.get('welcome') === 'true';
   const qc = useQueryClient();
   const reduce = useReducedMotion();
@@ -139,6 +144,13 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
         setUnlockedBadges(result.newlyEarnedBadges);
       }
     },
+  });
+
+  /* ── Admin harvest trigger (gated by `user?.isAdmin` in the UI) ──
+      Server enforces it too — see `requireAdmin` in admin.ts. */
+  const harvestMutation = useMutation({
+    ...runHarvestMutation(),
+    onSuccess: (summary) => setHarvestResult(summary),
   });
 
   /* ── Derived ── */
@@ -259,6 +271,82 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
             </motion.div>
           )}
 
+          {/* Harvest result banner (only shown after an admin clicks
+              Harvest). Tinted orange on success (any insert) and neutral
+              gray on a no-op run so the operator can tell them apart. */}
+          <AnimatePresence>
+            {harvestResult && !harvestMutation.isPending && (
+              <motion.div
+                key="harvest-result"
+                initial={reduce ? false : { opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className={[
+                  'mb-5 flex items-start gap-3 rounded-2xl border-2 border-black p-4 shadow-hard-sm',
+                  harvestResult.inserted > 0
+                    ? 'bg-orange text-foreground'
+                    : 'bg-muted text-foreground',
+                ].join(' ')}
+                role="status"
+                aria-live="polite"
+              >
+                <span aria-hidden className="mt-0.5 shrink-0">
+                  <Wand2 size={20} aria-hidden="true" />
+                </span>
+                <div className="flex-1">
+                  <p className="font-semibold">
+                    {harvestResult.inserted > 0
+                      ? `Pulled in ${harvestResult.inserted} fresh claim${harvestResult.inserted === 1 ? '' : 's'}`
+                      : 'No fresh claims this run'}
+                  </p>
+                  <p className="mt-1 text-label-small text-foreground/80">
+                    {harvestResult.searchHits} search hits · {harvestResult.aiItems} AI items ·{' '}
+                    dropped {harvestResult.droppedUnverified} low-confidence ·{' '}
+                    dropped {harvestResult.droppedDuplicate} duplicate
+                    {harvestResult.droppedDuplicate === 1 ? '' : 's'} ·{' '}
+                    {(harvestResult.durationMs / 1000).toFixed(1)}s
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHarvestResult(null)}
+                  aria-label="Dismiss harvest result"
+                  className="grid size-7 shrink-0 place-items-center rounded-md border-2 border-black bg-background/40 transition-colors hover:bg-background/60"
+                >
+                  <X size={14} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              </motion.div>
+            )}
+            {harvestMutation.isError && !harvestResult && (
+              <motion.div
+                key="harvest-error"
+                initial={reduce ? false : { opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className="mb-5 flex items-start gap-3 rounded-lg border-2 border-black bg-danger p-4 text-danger-foreground shadow-hard-sm"
+                role="alert"
+                aria-live="assertive"
+              >
+                <div className="flex-1">
+                  <p className="font-semibold">Harvest failed</p>
+                  <p className="mt-1 text-label-small">
+                    {(harvestMutation.error as Error).message}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => harvestMutation.reset()}
+                  aria-label="Dismiss harvest error"
+                  className="grid size-7 shrink-0 place-items-center rounded-md border-2 border-black bg-danger-foreground/20 transition-colors hover:bg-danger-foreground/30"
+                >
+                  <X size={14} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Page header — the page's loudest moment. Display heading
               underlined with the brand accent, plus a streak chip on the right
               that flips orange the moment the user hits a streak. */}
@@ -347,7 +435,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 )}
               </div>
 
-              {/* Streak chip */}
+              {/* Right-side meta — streak chip */}
               {user && (
                 <motion.div
                   variants={{
@@ -360,6 +448,31 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 </motion.div>
               )}
             </div>
+
+            {/* Admin toolbar — only renders for admins. Sits between the page
+                header and the progress rail so it's hard to miss during demo
+                but doesn't crowd the main feed UI for normal users. */}
+            {user?.isAdmin && (
+              <motion.div
+                initial={reduce ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: EASE, delay: 0.45 }}
+                className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border-2 border-black bg-pink-accent/20 px-3 py-2 shadow-hard-sm"
+                role="region"
+                aria-label="Admin tools"
+              >
+                <span className="inline-flex items-center gap-1.5 rounded-md border-2 border-black bg-foreground px-2 py-0.5 text-label-small font-bold uppercase tracking-wider text-background">
+                  Admin
+                </span>
+                <HarvestTriggerButton
+                  isPending={harvestMutation.isPending}
+                  onClick={() => harvestMutation.mutate()}
+                />
+                <span className="text-label-small text-foreground/70">
+                  Manually pull trending misinformation + scams from the web into this feed.
+                </span>
+              </motion.div>
+            )}
 
             {/* Progress rail - color intensity increases with votes */}
             {claims.length > 0 && (
@@ -662,5 +775,53 @@ function StreakChip({
       </motion.span>
       <span>{streak} streak</span>
     </motion.span>
+  );
+}
+
+/* ── Admin: manual harvest trigger ─────────────────────────────────────── */
+
+/**
+ * Admin-only button — fires `POST /api/admin/harvest`, which runs one
+ * synchronous pass of the hourly claim-harvester cron. Spins while in
+ * flight so the operator can see the job is working (a single harvest
+ * usually takes 2–6s: web search + AI call + inserts).
+ *
+ * Kept narrow so it can sit next to the streak chip without crowding
+ * the page header.
+ */
+function HarvestTriggerButton({
+  isPending,
+  onClick,
+}: {
+  isPending: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      disabled={isPending}
+      whileTap={isPending ? undefined : { scale: 0.95 }}
+      whileHover={isPending ? undefined : { scale: 1.04 }}
+      className={[
+        'inline-flex items-center gap-1.5 rounded-lg border-2 border-black px-2.5 py-1 text-label-small font-bold uppercase tracking-wider shadow-hard-sm transition-all',
+        'bg-pink-accent text-foreground',
+        isPending ? 'cursor-wait opacity-70' : 'hover-lift',
+      ].join(' ')}
+      aria-label={isPending ? 'Refreshing claims feed…' : 'Refresh claims from the web'}
+    >
+      <motion.span
+        aria-hidden
+        animate={isPending ? { rotate: 360 } : { rotate: [0, -8, 8, 0] }}
+        transition={
+          isPending
+            ? { duration: 1, repeat: Infinity, ease: 'linear' }
+            : { duration: 2, repeat: Infinity, ease: 'easeInOut' }
+        }
+      >
+        <Wand2 size={14} strokeWidth={2.5} aria-hidden="true" />
+      </motion.span>
+      <span>{isPending ? 'Refreshing…' : 'Refresh feed'}</span>
+    </motion.button>
   );
 }

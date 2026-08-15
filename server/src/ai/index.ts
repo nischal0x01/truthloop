@@ -39,6 +39,9 @@ export {
   // live fact-check
   factCheckSchema,
   factCheckFallback,
+  // claim harvest (hourly cron)
+  harvestBatchSchema,
+  harvestBatchFallback,
 } from './schemas';
 
 export type {
@@ -50,6 +53,7 @@ export type {
   ReplayCoachNote,
   Prescription,
   FactCheck,
+  HarvestBatch,
 } from './schemas';
 
 export {
@@ -70,4 +74,5 @@ export {
 } from './prompts/prescription';
 export { buildScamForecastPrompt } from './prompts/scam-forecast';
 export { buildLiveFactCheckPrompt } from './prompts/live-fact-check';
+export { buildClaimHarvestPrompt } from './prompts/claim-harvest';
 export { buildToxicityPrompt } from './prompts/toxicity';

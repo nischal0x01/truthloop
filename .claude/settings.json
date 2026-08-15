@@ -59,7 +59,23 @@
       "Bash(psql \"postgresql://sajjankarna:sajjankarna@localhost:5432/youth\" -c \"SELECT u.email, ub.badge_slug, ub.earned_at FROM user_badges ub JOIN users u ON u.id=ub.user_id ORDER BY u.email, ub.badge_slug;\")",
       "Bash(curl -s -X POST http://localhost:3000/api/claims/foo/guess -H 'Content-Type: application/json' -d '{\"user_answer\":\"real\"}')",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/api/claims)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(sed -i.bak 's|\"tsup.config.ts\"||g' tsconfig.json)",
+      "Bash(sed -i.bak '/^$/d' tsconfig.json)",
+      "Bash(command -v psql)",
+      "Bash(psql --version)",
+      "Bash(echo \"psql available: $\\(psql --version\\)\")",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(npx drizzle-kit *)",
+      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"\\\\d claims\")",
+      "Bash(curl -s http://localhost:3000/api/auth/me -i)",
+      "Bash(curl -s http://localhost:3000/api/admin/harvest -i)",
+      "Bash(kill 51466)",
+      "Bash(curl -s -o /dev/null -w \"auth/me: %{http_code}\\\\n\" http://localhost:3000/api/auth/me)",
+      "Bash(curl -s -o /dev/null -w \"admin/harvest: %{http_code}\\\\n\" -X POST http://localhost:3000/api/admin/harvest)",
+      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"SELECT email, is_admin, password_hash IS NOT NULL AS has_pw FROM users ORDER BY email;\")",
+      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"UPDATE users SET is_admin = true WHERE email = 'karnaa787@gmail.com' RETURNING email, is_admin;\")",
+      "Bash(PGPASSWORD=sajjankarna psql -h localhost -U sajjankarna -d youth -c \"TRUNCATE claims RESTART IDENTITY CASCADE; SELECT \\(SELECT COUNT\\(*\\) FROM claims\\) AS claims, \\(SELECT COUNT\\(*\\) FROM guesses\\) AS guesses, \\(SELECT COUNT\\(*\\) FROM comments\\) AS comments;\")"
     ]
   }
 }

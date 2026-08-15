@@ -12,6 +12,7 @@ import { config } from '@/config';
 import { logger } from '@/utils/logger';
 import { runDigest } from './digest';
 import { runWeeklyReport } from './weekly-report';
+import { runClaimHarvest } from './claimHarvester';
 
 interface RegisteredJob {
   name: string;
@@ -41,6 +42,17 @@ export function startJobs(): void {
   if (!config.cron.enabled) {
     logger.warn('[cron] disabled via CRON_ENABLED=false — jobs will not run');
     return;
+  }
+
+  // Top of every hour (override via HARVEST_CRON) — pulls trending
+  // misinformation + scams from the web and inserts them into the
+  // claims feed. Independent kill switch via HARVEST_ENABLED=false.
+  if (config.harvest.enabled) {
+    schedule('claim-harvest', config.harvest.schedule, runClaimHarvest);
+  } else {
+    logger.warn(
+      '[cron] claim-harvest disabled via HARVEST_ENABLED=false — feed will not auto-refresh'
+    );
   }
 
   // 08:00 UTC daily — digest email.

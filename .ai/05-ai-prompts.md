@@ -335,6 +335,7 @@ server/src/ai/
   prompts/
     scamForecast.ts
     liveFactCheck.ts
+    claimHarvest.ts    # §6.5 — hourly auto-ingest of trending claims
     toxicity.ts
     weeklyNarrative.ts
   schemas.ts           # all Zod schemas in one place
@@ -364,6 +365,71 @@ export async function callClaude<T>(opts: {
 - Live fact-check: `{ verdict: 'unverifiable', confidence: 0, explanation: 'AI check unavailable, try again', sources: [], category: 'unverified_claim' }`
 - Toxicity: `{ score: 0.3, reasons: [], action: 'accept' }` (when in doubt, accept; moderators clean later)
 - Weekly narrative: hardcoded "Great week — keep voting to sharpen your instincts."
+- Claim harvest: `{ items: [] }` — empty batch, NOT a fabricated claim. The job will not insert anything that hour.
+
+---
+
+## 6.5 Hourly claim harvest (post-build addition)
+
+**Model**: `claude-opus-4-1` (strong tier — same as live fact-check; we want calibrated verdicts, not cheap guesses)
+**Use**: `server/src/jobs/claimHarvester.ts` runs on the cron schedule `HARVEST_CRON` (default `0 * * * *`, top of every hour). Issues 3 seed web-search queries against MiniMax (debunkers, scam trackers, misattribution patterns), asks Claude to extract SPECIFIC factual claims AND verify each in one structured call, then the job drops unverified / low-confidence / near-duplicate items and inserts survivors into `claims` with `origin='auto'`.
+
+**Input**:
+```ts
+{
+  today: '2026-08-15',
+  seedQueries: [
+    'trending fact check viral misinformation this week',
+    'new scam alert phishing deepfake',
+    'misattributed quote viral social media',
+  ],
+  searchResults: SearchResult[],   // up to ~15 cleaned snippets, deduped by URL
+  maxItems: 2,                     // HARVEST_MAX_PER_RUN, capped 1–5
+}
+```
+
+**Output** (validated by `harvestBatchSchema`):
+```ts
+{
+  items: [
+    {
+      text: '20–280 chars, single specific assertion, not a vague topic',
+      verdict: 'real' | 'fake' | 'unverified',
+      confidence: 0–100,
+      headline: '≤ 2 sentences',
+      reasons: ['1–4 short sentences', '...'],
+      sources: [{ url, title }, ...]   // 0–3, copied verbatim from <search_results>
+      category: <categorySlug>,
+      trendSignal: 0–100,              // seeded into claims.trending_score
+    },
+    ...
+  ]
+}
+```
+
+**Job-side filters** (after Claude returns):
+1. Drop items with `verdict === 'unverified'`
+2. Drop items with `confidence < 50`
+3. Drop items whose normalised text matches a `claims` row inserted in the last 14 days
+4. Slice to `HARVEST_MAX_PER_RUN`
+5. Insert with `origin='auto'`, `publishedAt=NOW()`, `trending_score = trendSignal * freshness`
+
+**Failure handling** (every step `try`/`catch` + `logger.error`, never throws):
+- MiniMax search fails/empty → log + exit (no AI call this hour)
+- AI throws → log + exit
+- AI returns `items: []` → log + exit
+- All items filtered → log + exit
+- Insert throws → log the error but don't re-run
+
+**Switching off**:
+```bash
+HARVEST_ENABLED=false    # in server/.env — pauses auto-ingest without removing the schedule
+```
+
+**Manual trigger** (for testing):
+```bash
+npx tsx -e "import('./src/jobs/claimHarvester.js').then(m => m.runClaimHarvest().then(() => process.exit(0)))"
+```
 
 ---
 
@@ -377,9 +443,10 @@ Assuming `claude-sonnet-4-5` at $3/MTok input, $15/MTok output, and `claude-opus
 | Live fact-check (per user submit) | ~50 (demo) | ~500 | ~300 | ~$0.30 |
 | Toxicity (per comment) | ~100 (demo) | ~300 | ~50 | ~$0.15 |
 | Weekly narrative (per user) | 50 (demo) | ~800 | ~100 | ~$0.30 |
-| **Total demo day** | | | | **~$0.77** |
+| **Claim harvest** (cron, hourly) | 24 | ~3K | ~1K | ~$0.70 |
+| **Total demo day** | | | | **~$1.47** |
 
-Negligible. Cost is not a concern for the hackathon.
+Harvest is the largest line item now. Tunable via `HARVEST_MAX_PER_RUN` (default 2; drop to 1 or pause with `HARVEST_ENABLED=false` if cost becomes a concern).
 
 ---
 

@@ -10,6 +10,7 @@ import reportsRouter from './reports';
 import forecastRouter from './forecast';
 import submissionsRouter from './submissions';
 import settingsRouter from './settings';
+import adminRouter from './admin';
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use('/reports', reportsRouter);
 router.use('/forecast', forecastRouter);
 router.use('/submissions', submissionsRouter);
 router.use('/me', settingsRouter);
+router.use('/admin', adminRouter);
 
 export default router;

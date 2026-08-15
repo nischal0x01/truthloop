@@ -31,6 +31,15 @@ export const claims = pgTable(
     publishedAt: timestamp('published_at', { withTimezone: true }),
     trendingScore: real('trending_score').notNull().default(0),
     voteCount: integer('vote_count').notNull().default(0),
+    /**
+     * Provenance marker:
+     *   - 'manual' — seeded by an editor (db:seed) or inserted by an admin.
+     *   - 'auto'   — inserted by the hourly claim-harvester cron
+     *                (server/src/jobs/claimHarvester.ts).
+     * Defaults to 'manual' so every legacy row stays correctly attributed
+     * without a backfill.
+     */
+    origin: text('origin').notNull().default('manual'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

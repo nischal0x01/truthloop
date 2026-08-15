@@ -33,6 +33,7 @@ Legend: ✅ built · ⏳ partially built · ⬜ not started · ❌ cut
 | ~~All-time leaderboard tab~~ | ⏳ | Daily scope shipping; all-time scope is a tab toggle, easy. |
 | ~~Some badges~~ | ⏳ | Tables exist; need to confirm trigger logic runs on every guess. |
 | ~~Weekly report on-demand regen~~ | ✅ | `POST /api/reports/weekly/regenerate` works, week-only (intentional — see WeeklyReport.tsx) |
+| **Hourly auto-harvested trending claims** (post-build addition) | ✅ | New `server/src/jobs/claimHarvester.ts` cron (`HARVEST_CRON`, default top of every hour) — MiniMax web-search seed queries → Claude extracts + verifies SPECIFIC claims in a single structured call → drops `unverified`/low-confidence/near-duplicate items → inserts survivors as `origin='auto'`. New `origin` column on `claims` (default `'manual'`) for provenance. Switch via `HARVEST_ENABLED=false` to pause without un-scheduling. Manual trigger: `npx tsx -e "import('./src/jobs/claimHarvester.js').then(m => m.runClaimHarvest().then(() => process.exit(0)))"`. |
 
 ### Mobile responsive
 

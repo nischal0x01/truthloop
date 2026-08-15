@@ -1,0 +1,1 @@
+ALTER TABLE "claims" ADD COLUMN "origin" text DEFAULT 'manual' NOT NULL;

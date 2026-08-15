@@ -31,7 +31,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Providers>
       <App />
-      {process.env.NODE_ENV === 'development' && <Agentation />}
+      {import.meta.env.DEV && <Agentation />}
     </Providers>
   </StrictMode>
 );

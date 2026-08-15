@@ -155,6 +155,7 @@ npm run format
 - **One vote per user, locked** — `UNIQUE (user_id, claim_id)` constraint on the `guesses` table. Don't change.
 - **AI fallback responses** are documented per prompt in [`.ai/05-ai-prompts.md`](.ai/05-ai-prompts.md) §6. Always handle the case where Claude is down or returns invalid JSON.
 - **Demo account** is the seeded `users` row with `is_admin = true`, `email = demo@truthloop.app`. Pre-seed everything for this user (badges, weekly report, points, notifications).
+- **Hourly claim harvester** — `server/src/jobs/claimHarvester.ts` runs on `HARVEST_CRON` (default top of every hour) and inserts trending claims with `origin='auto'`. Independent kill switch via `HARVEST_ENABLED=false`. Manual trigger: `tsx -e "import('./src/jobs/claimHarvester.js').then(m => m.runClaimHarvest().then(() => process.exit(0)))"`.
 
 ---
 

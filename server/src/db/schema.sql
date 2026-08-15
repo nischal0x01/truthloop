@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS claims (
   published_at TIMESTAMPTZ,
   trending_score REAL NOT NULL DEFAULT 0,
   vote_count INTEGER NOT NULL DEFAULT 0,
+  origin TEXT NOT NULL DEFAULT 'manual',
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -105,6 +106,10 @@ ALTER TABLE claims ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAUL
 ALTER TABLE claims ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
 ALTER TABLE claims ADD COLUMN IF NOT EXISTS trending_score REAL NOT NULL DEFAULT 0;
 ALTER TABLE claims ADD COLUMN IF NOT EXISTS vote_count INTEGER NOT NULL DEFAULT 0;
+-- `origin` was added when the hourly claim-harvester cron shipped
+-- (server/src/jobs/claimHarvester.ts). Defaults to 'manual' so every
+-- legacy row stays correctly attributed without a backfill.
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'manual';
 
 CREATE INDEX IF NOT EXISTS idx_claims_published_trending
   ON claims(is_published, trending_score DESC, published_at DESC);

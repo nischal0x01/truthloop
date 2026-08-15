@@ -210,3 +210,47 @@ export const factCheckFallback: FactCheck = {
   reasons: ['Our fact-check service did not respond. Your submission was saved and can be re-checked later.'],
   category: 'unverified_claim',
 };
+
+/* ── 6. Claim harvest (`.ai/05-ai-prompts.md` §6 — hourly cron) ─────────
+ *
+ * Output of the hourly claim-harvester cron
+ * (server/src/jobs/claimHarvester.ts): Claude returns a small batch of
+ * already-extracted + verified claims, each shaped exactly like a FactCheck
+ * plus a `trendSignal` 0–100 used to seed the row's trending_score.
+ *
+ * The job then filters (drops unverified, low-confidence, and duplicates)
+ * and persists whatever survives. Empty `items: []` is a valid result —
+ * it just means the job logged "no fresh claims this hour" and exits.
+ */
+export const harvestBatchSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        text: z.string().min(20).max(280),
+        verdict: verdictLevel,
+        confidence: z.number().int().min(0).max(100),
+        headline: z.string().min(10).max(180),
+        reasons: z.array(z.string().min(8).max(180)).min(1).max(4),
+        sources: z
+          .array(
+            z.object({
+              url: z.string().url(),
+              title: z.string().min(2).max(120),
+            })
+          )
+          .max(3)
+          .optional(),
+        category: categorySlug,
+        trendSignal: z.number().int().min(0).max(100).optional(),
+      })
+    )
+    .max(5),
+});
+export type HarvestBatch = z.infer<typeof harvestBatchSchema>;
+
+/**
+ * Hard fallback when Claude is down or returns garbage. Returning an EMPTY
+ * items array (not a fabricated claim) is the only safe behaviour here —
+ * the job MUST NOT insert unverified / hallucinated content.
+ */
+export const harvestBatchFallback: HarvestBatch = { items: [] };
