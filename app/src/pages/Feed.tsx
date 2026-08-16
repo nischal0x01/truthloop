@@ -560,7 +560,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                 <div
                   role="tablist"
                   aria-label="Date range preset"
-                  className="inline-flex items-center gap-0.5 rounded-full border-2 border-black bg-muted p-1 shadow-hard-sm"
+                  className="flex max-w-full flex-wrap items-center gap-0.5 rounded-full border-2 border-black bg-muted p-1 shadow-hard-sm"
                 >
                   {(
                     [
@@ -586,7 +586,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                         }}
                         transition={{ duration: 0.35, ease: EASE }}
                         whileTap={{ scale: 0.96 }}
-                        className={`relative inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-label-small font-semibold transition-colors duration-200 ${
+                        className={`relative inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-label-small font-semibold transition-colors duration-200 sm:px-3.5 ${
                           isActive
                             ? 'text-foreground'
                             : 'text-foreground/55 hover:text-foreground'
@@ -626,7 +626,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                     transition={{ duration: 0.28, ease: EASE }}
                     className="overflow-hidden"
                   >
-                    <div className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-black bg-card p-2.5 shadow-hard">
+                    <div className="flex flex-col gap-2 rounded-2xl border-2 border-black bg-card p-2.5 shadow-hard sm:flex-row sm:flex-wrap sm:items-center">
                       <DateField
                         label="From"
                         value={customRange.from}
@@ -638,7 +638,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                       <ArrowRight
                         size={14}
                         aria-hidden="true"
-                        className="shrink-0 text-foreground/40"
+                        className="hidden shrink-0 -rotate-90 text-foreground/40 sm:inline-block sm:rotate-0"
                         strokeWidth={2.5}
                       />
                       <DateField
@@ -652,7 +652,7 @@ export function Feed({ initialSearch = '', selectedClaimId }: FeedProps) {
                           type="button"
                           onClick={() => setCustomRange({ from: '', to: '' })}
                           whileTap={{ scale: 0.94 }}
-                          className="ml-auto inline-flex items-center gap-1 rounded-full border-2 border-black bg-background px-2.5 py-1 text-label-small font-semibold text-foreground/70 transition-colors hover:border-danger hover:bg-danger hover:text-danger-foreground"
+                          className="inline-flex items-center justify-center gap-1 self-end rounded-full border-2 border-black bg-background px-2.5 py-1 text-label-small font-semibold text-foreground/70 transition-colors hover:border-danger hover:bg-danger hover:text-danger-foreground sm:ml-auto"
                         >
                           <X size={10} strokeWidth={3} aria-hidden="true" />
                           Clear
@@ -1016,8 +1016,8 @@ function DateField({
   max?: string;
 }) {
   return (
-    <label className="group inline-flex items-center gap-1.5 rounded-md border-2 border-black bg-background px-2 py-1 text-label-small font-semibold text-foreground transition-colors focus-within:bg-highlight focus-within:text-highlight-foreground hover:bg-background">
-      <span className="text-label-small font-semibold uppercase tracking-wider text-foreground/60 group-focus-within:text-highlight-foreground">
+    <label className="group flex min-w-0 flex-1 items-center gap-1.5 rounded-md border-2 border-black bg-background px-2 py-1 text-label-small font-semibold text-foreground transition-colors focus-within:bg-highlight focus-within:text-highlight-foreground hover:bg-background sm:flex-none">
+      <span className="shrink-0 text-label-small font-semibold uppercase tracking-wider text-foreground/60 group-focus-within:text-highlight-foreground">
         {label}
       </span>
       <input
@@ -1026,7 +1026,7 @@ function DateField({
         min={min}
         max={max}
         onChange={(e) => onChange(e.target.value)}
-        className="w-30 cursor-pointer border-0 bg-transparent p-0 text-label-small font-semibold text-foreground focus:outline-none focus:ring-0 group-focus-within:text-highlight-foreground"
+        className="min-w-0 w-full cursor-pointer border-0 bg-transparent p-0 text-label-small font-semibold text-foreground focus:outline-none focus:ring-0 group-focus-within:text-highlight-foreground sm:w-32"
       />
     </label>
   );
